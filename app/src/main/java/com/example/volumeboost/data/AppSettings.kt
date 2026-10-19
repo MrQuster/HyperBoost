@@ -75,31 +75,31 @@ object BoostScaleMapper {
 
     fun fractionToPercent(fraction: Float, unlimitedMode: Boolean): Int {
         val f = fraction.coerceIn(0f, 1f)
-        val maxCap = maxAllowedPercent(unlimitedMode).toFloat()
-        return if (f <= 0.5f) {
-            ((f / 0.5f) * 200f).roundToInt()
-        } else {
-            val t = (f - 0.5f) / 0.5f
-            val ratio = (maxCap / 200f).coerceAtLeast(1f)
-            val raw = 200f * ratio.pow(t)
-            val step = when {
-                raw < 500f -> 5
-                raw < 2000f -> 10
-                else -> 50
-            }
-            ((raw.roundToInt() + step / 2) / step) * step
-        }.coerceIn(0, maxCap.toInt())
+        val q3 = if (unlimitedMode) 1500f else 500f
+        val q4 = maxAllowedPercent(unlimitedMode).toFloat()
+        val raw = when {
+            f <= 0.25f -> (f / 0.25f) * 100f
+            f <= 0.50f -> 100f + ((f - 0.25f) / 0.25f) * 100f
+            f <= 0.75f -> 200f + ((f - 0.50f) / 0.25f) * (q3 - 200f)
+            else -> q3 + ((f - 0.75f) / 0.25f) * (q4 - q3)
+        }
+        val step = when {
+            raw <= 200f -> 5
+            raw <= 1000f -> 10
+            else -> 50
+        }
+        return (((raw.roundToInt() + step / 2) / step) * step).coerceIn(0, q4.toInt())
     }
 
     fun percentToFraction(percent: Int, unlimitedMode: Boolean): Float {
-        val maxCap = maxAllowedPercent(unlimitedMode).toFloat()
-        val p = percent.toFloat().coerceIn(0f, maxCap)
-        return if (p <= 200f) {
-            (p / 200f) * 0.5f
-        } else {
-            val ratio = (maxCap / 200f).coerceAtLeast(1.0001f)
-            val t = (ln(p / 200f) / ln(ratio)).coerceIn(0f, 1f)
-            0.5f + t * 0.5f
+        val q3 = if (unlimitedMode) 1500f else 500f
+        val q4 = maxAllowedPercent(unlimitedMode).toFloat()
+        val p = percent.toFloat().coerceIn(0f, q4)
+        return when {
+            p <= 100f -> (p / 100f) * 0.25f
+            p <= 200f -> 0.25f + ((p - 100f) / 100f) * 0.25f
+            p <= q3 -> 0.50f + ((p - 200f) / (q3 - 200f)) * 0.25f
+            else -> 0.75f + ((p - q3) / (q4 - q3).coerceAtLeast(1f)) * 0.25f
         }.coerceIn(0f, 1f)
     }
 

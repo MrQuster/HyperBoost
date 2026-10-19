@@ -20,6 +20,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.os.StrictMode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,15 +53,23 @@ class MainActivity : AppCompatActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (BuildConfig.DEBUG) {
+            StrictMode.setThreadPolicy(
+                StrictMode.ThreadPolicy.Builder()
+                    .detectNetwork()
+                    .penaltyLog()
+                    .build()
+            )
+        }
         handleShortcutIntent(intent)
 
         setContent {
             val context = LocalContext.current
-            val globalSettings by settingsViewModel.settings.collectAsState()
-            val deviceProfile by settingsViewModel.deviceProfile.collectAsState()
-            val runtime by homeViewModel.runtimeState.collectAsState()
-            val boostPercent by homeViewModel.boostPercent.collectAsState()
-            val selectedTab by homeViewModel.selectedTabIndex.collectAsState()
+            val globalSettings by settingsViewModel.settings.collectAsStateWithLifecycle()
+            val deviceProfile by settingsViewModel.deviceProfile.collectAsStateWithLifecycle()
+            val runtime by homeViewModel.runtimeState.collectAsStateWithLifecycle()
+            val boostPercent by homeViewModel.boostPercent.collectAsStateWithLifecycle()
+            val selectedTab by homeViewModel.selectedTabIndex.collectAsStateWithLifecycle()
 
             val systemPlan = remember(deviceProfile, globalSettings.islandRoutingPreference, globalSettings.powerSaveGlass) {
                 FeatureRegistry.resolvePlan(

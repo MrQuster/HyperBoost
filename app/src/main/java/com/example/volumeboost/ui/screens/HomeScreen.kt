@@ -29,12 +29,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.volumeboost.R
 import com.example.volumeboost.data.BoostMode
 import com.example.volumeboost.data.BoostScaleMapper
 import com.example.volumeboost.ui.components.*
 import com.example.volumeboost.ui.theme.LocalGlassTokens
 import com.example.volumeboost.viewmodel.HomeViewModel
+import kotlin.math.log10
 
 @Composable
 fun HomeScreen(
@@ -42,14 +44,30 @@ fun HomeScreen(
     onRequestStartEngine: (BoostMode) -> Unit
 ) {
     val tokens = LocalGlassTokens.current
-    val settings by viewModel.settings.collectAsState()
-    val runtime by viewModel.runtimeState.collectAsState()
-    val device by viewModel.connectedDevice.collectAsState()
-    val boostPercent by viewModel.boostPercent.collectAsState()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val runtime by viewModel.runtimeState.collectAsStateWithLifecycle()
+    val device by viewModel.connectedDevice.collectAsStateWithLifecycle()
+    val boostPercent by viewModel.boostPercent.collectAsStateWithLifecycle()
 
     val unlimited = settings.unlimitedBoostEnabled
     val sliderFraction = remember(boostPercent, unlimited) {
         BoostScaleMapper.percentToFraction(boostPercent, unlimited)
+    }
+
+    // Честный расчёт реального акустического усиления в дБ: 20 * log10(boost / 100)
+    val statusSubtitle = remember(runtime.isRunning, runtime.activeMode, boostPercent) {
+        if (!runtime.isRunning) {
+            "Усилитель в режиме ожидания"
+        } else {
+            val multiplier = (boostPercent / 100f).coerceAtLeast(0.01f)
+            val acousticDb = if (boostPercent <= 100) 0f else (20f * log10(multiplier))
+            val modePrefix = if (runtime.activeMode == BoostMode.STANDARD) {
+                "Системный тракт"
+            } else {
+                "Прямой захват DSP"
+            }
+            "$modePrefix • ${"%.2f".format(multiplier)}x (+${"%.1f".format(acousticDb)} дБ)"
+        }
     }
 
     Column(
@@ -60,7 +78,7 @@ fun HomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(tokens.spacingLarge)
     ) {
-        // 1. Карточка текущего аудиовыхода (полный перенос текста без обрезки)
+        // 1. Карточка текущего аудиовыхода (реальные данные AudioManager без обрезки)
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -78,7 +96,7 @@ fun HomeScreen(
                         .background(tokens.accentColor.copy(alpha = 0.24f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(devIcon, contentDescription = null, tint = tokens.accentColor)
+                    Icon(devIcon, contentDescription = device.name, tint = tokens.accentColor)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -94,14 +112,13 @@ fun HomeScreen(
                         text = device.codecAndLatencyHint,
                         color = tokens.textSecondary,
                         fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        maxLines = 3
+                        lineHeight = 16.sp
                     )
                 }
             }
         }
 
-        // 2. Круговой регулятор и синхронизированный нелинейный слайдер
+        // 2. Круговой регулятор с круглой волной и синхронизированный нелинейный слайдер
         GlassCard(
             modifier = Modifier.fillMaxWidth(),
             cornerRadius = 30.dp
@@ -124,10 +141,10 @@ fun HomeScreen(
                 )
 
                 Text(
-                    text = runtime.statusMessage,
+                    text = statusSubtitle,
                     color = tokens.textSecondary,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.SemiBold
                 )
 
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -139,28 +156,29 @@ fun HomeScreen(
                         },
                         valueRange = 0f..1f
                     )
-                    val midHighLabel = if (unlimited) "1400%" else "450%"
+                    // 5 опорных точек шкалы (0%, 25%, 50%, 75%, 100% длины дорожки)
+                    val q3Label = if (unlimited) "1500%" else "500%"
                     val maxLabel = if (unlimited) "10000%" else "1000%"
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 6.dp),
+                            .padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        listOf("0%", "100%", "200%", midHighLabel, maxLabel).forEach { tickText ->
+                        listOf("0%", "100%", "200%", q3Label, maxLabel).forEach { tickText ->
                             Text(
                                 text = tickText,
                                 color = tokens.textSecondary,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
                 }
 
-                // Горизонтально прокручиваемый ряд пресетов, который не обрезается на любых размерах шрифта
+                // Быстрые пресеты усиления с горизонтальной прокруткой
                 val presets = if (unlimited) {
-                    listOf(100, 150, 300, 1000, 2500)
+                    listOf(100, 200, 500, 1500, 5000)
                 } else {
                     listOf(100, 150, 200, 500, 1000)
                 }
@@ -181,7 +199,7 @@ fun HomeScreen(
             }
         }
 
-        // 3. Карточка уровня сигнала и спектра в реальном времени (Peak / RMS)
+        // 3. Карточка уровня сигнала и пиков (без наложения заголовка на плашку)
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
@@ -190,24 +208,25 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.signal_meter),
+                        text = "Уровень сигнала и пиков",
                         color = tokens.textPrimary,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(tokens.accentColor.copy(alpha = 0.20f))
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = if (runtime.isLimiterEngaged) stringResource(R.string.limiter_active_badge)
-                            else stringResource(R.string.limiter_idle_badge),
+                            text = "Пик: ${(runtime.peakSignal * 100).toInt()}%",
                             color = tokens.accentColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }
@@ -215,8 +234,8 @@ fun HomeScreen(
                 RealTimeSignalBarsCanvas(
                     bands = runtime.spectrumBands,
                     hasActiveStream = runtime.hasActiveAudioStream,
-                    peakSignal = runtime.peakSignal,
-                    rmsSignal = runtime.rmsSignal
+                    rmsSignal = runtime.rmsSignal,
+                    isLimiterEngaged = runtime.isLimiterEngaged
                 )
 
                 AnimatedVisibility(visible = runtime.isCapturingSilenceOrDrm) {
@@ -259,6 +278,7 @@ fun HomeScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 54.dp)
                             .clip(RoundedCornerShape(18.dp))
                             .background(
                                 if (selected) tokens.accentColor.copy(alpha = 0.22f)
@@ -325,7 +345,8 @@ fun HomeScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(tokens.screenBottomPadding))
+        // Достаточный запас высоты под нижней панелью с линзой
+        Spacer(modifier = Modifier.height(136.dp))
     }
 }
 
@@ -333,8 +354,8 @@ fun HomeScreen(
 private fun RealTimeSignalBarsCanvas(
     bands: List<Float>,
     hasActiveStream: Boolean,
-    peakSignal: Float,
-    rmsSignal: Float
+    rmsSignal: Float,
+    isLimiterEngaged: Boolean
 ) {
     val tokens = LocalGlassTokens.current
 
@@ -344,7 +365,7 @@ private fun RealTimeSignalBarsCanvas(
                 .fillMaxWidth()
                 .height(68.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.28f))
+                .background(Color.Black.copy(alpha = 0.34f))
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -354,7 +375,8 @@ private fun RealTimeSignalBarsCanvas(
                 val barW = ((size.width - spacing * (count - 1)) / count).coerceAtLeast(3f)
 
                 for (i in 0 until count) {
-                    val level = bands[i].coerceIn(0.06f, 1f)
+                    val rawLevel = if (hasActiveStream) bands[i] else 0f
+                    val level = rawLevel.coerceIn(0.05f, 1f)
                     val barH = size.height * level
                     val x = i * (barW + spacing)
 
@@ -365,14 +387,16 @@ private fun RealTimeSignalBarsCanvas(
                         cornerRadius = CornerRadius(barW / 2f)
                     )
 
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(tokens.accentColor, tokens.secondaryAccent)
-                        ),
-                        topLeft = Offset(x, size.height - barH),
-                        size = Size(barW, barH),
-                        cornerRadius = CornerRadius(barW / 2f)
-                    )
+                    if (hasActiveStream && rawLevel > 0.02f) {
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(tokens.accentColor, tokens.secondaryAccent)
+                            ),
+                            topLeft = Offset(x, size.height - barH),
+                            size = Size(barW, barH),
+                            cornerRadius = CornerRadius(barW / 2f)
+                        )
+                    }
                 }
             }
 
@@ -391,15 +415,16 @@ private fun RealTimeSignalBarsCanvas(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "RMS: ${(rmsSignal * 100).toInt()}%",
+                text = "RMS мощность: ${(rmsSignal * 100).toInt()}%",
                 color = tokens.textSecondary,
-                fontSize = 11.sp
+                fontSize = 11.5.sp
             )
             Text(
-                text = "Пик: ${(peakSignal * 100).toInt()}%",
-                color = tokens.accentColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
+                text = if (isLimiterEngaged) stringResource(R.string.limiter_active_badge)
+                else stringResource(R.string.limiter_idle_badge),
+                color = if (isLimiterEngaged) tokens.accentColor else tokens.textSecondary,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold
             )
         }
     }

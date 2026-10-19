@@ -139,11 +139,15 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             bt != null -> {
                 val productName = bt.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth Аудио"
                 val sr = bt.sampleRates.maxOrNull() ?: 48000
+                val outSr = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull() ?: sr
+                val fpb = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull() ?: 256
+                val bufferMs = "%.1f".format((fpb * 1000f) / outSr.coerceAtLeast(8000))
+                val profileType = if (bt.type == AudioDeviceInfo.TYPE_BLE_HEADSET) "BLE Audio" else "Bluetooth A2DP"
                 ConnectedAudioDeviceInfo(
                     id = "BT_${productName.uppercase()}",
                     name = productName,
                     type = "BLUETOOTH",
-                    codecAndLatencyHint = "Bluetooth A2DP / BLE • ${sr / 1000} кГц • Задержка ~120 мс"
+                    codecAndLatencyHint = "$profileType • ${outSr / 1000} кГц • Буфер ЦАП $bufferMs мс ($fpb фр.)"
                 )
             }
             usb != null -> {

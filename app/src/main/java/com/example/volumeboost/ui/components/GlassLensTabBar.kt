@@ -57,16 +57,16 @@ private const val LENS_REFRACTION_AGSL = """
 
         if (distSq < 1.0) {
             float z = sqrt(1.0 - distSq);
-            float mag = 1.0 - (refractionStrength * (0.18 + 0.14 * isDragging) * z);
+            float mag = 1.0 - (refractionStrength * (0.16 + 0.12 * isDragging) * z);
             float2 refractedCoord = lensCenter + delta * mag;
 
-            float2 chromaShift = delta * (distSq * 0.035 * refractionStrength);
+            float2 chromaShift = delta * (distSq * 0.03 * refractionStrength);
             half r = content.eval(refractedCoord - chromaShift).r;
             half g = content.eval(refractedCoord).g;
             half b = content.eval(refractedCoord + chromaShift).b;
             half a = content.eval(refractedCoord).a;
 
-            float rim = smoothstep(0.68, 1.0, distSq) * (0.16 + 0.10 * isDragging);
+            float rim = smoothstep(0.68, 1.0, distSq) * (0.14 + 0.10 * isDragging);
             return half4(r + rim, g + rim, b + rim * 1.12, a);
         }
         return content.eval(coord);
@@ -79,7 +79,7 @@ fun GlassLensTabBar(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    freeLensDragEnabled: Boolean = true,
+    freeLensDragEnabled: Boolean = false,
     refractionStrength: Float = 0.65f,
     borderStrokeWidth: Dp = 1.4.dp
 ) {
@@ -92,13 +92,12 @@ fun GlassLensTabBar(
     val currentOnSelect by rememberUpdatedState(onSelect)
 
     val lensX = remember { Animatable(0f) }
-    val lensY = remember { Animatable(0f) }
     var isDraggingLens by remember { mutableStateOf(false) }
     var horizontalVelocity by remember { mutableFloatStateOf(0f) }
     var isInitialized by remember { mutableStateOf(false) }
 
     val dragScale by animateFloatAsState(
-        targetValue = if (isDraggingLens) 1.12f else 1.0f,
+        targetValue = if (isDraggingLens) 1.06f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioLowBouncy,
             stiffness = Spring.StiffnessMediumLow
@@ -106,14 +105,14 @@ fun GlassLensTabBar(
         label = "lensDragScale"
     )
 
-    val velocityStretch = (abs(horizontalVelocity) / 3000f).coerceIn(0f, 0.20f)
+    val velocityStretch = (abs(horizontalVelocity) / 3600f).coerceIn(0f, 0.12f)
     val stretchX by animateFloatAsState(
         targetValue = dragScale * (1f + velocityStretch),
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "stretchX"
     )
     val stretchY by animateFloatAsState(
-        targetValue = dragScale * (1f - velocityStretch * 0.40f),
+        targetValue = dragScale * (1f - velocityStretch * 0.30f),
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "stretchY"
     )
@@ -124,216 +123,203 @@ fun GlassLensTabBar(
         } else null
     }
 
-    BoxWithConstraints(
+    // Внешний контейнер с защитным градиентным затемнением (Scrim) снизу,
+    // чтобы карточки при прокрутке никогда не читались сквозь панель и под ней
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.systemGestures.only(WindowInsetsSides.Horizontal))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .height(64.dp)
-    ) {
-        val barWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
-        val barHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
-        val tabCount = items.size.coerceAtLeast(1)
-        val tabWidthPx = barWidthPx / tabCount
-        val lensWidthPx = tabWidthPx * 0.96f
-        val lensHeightPx = barHeightPx * 0.84f
-
-        LaunchedEffect(selectedIndex, barWidthPx, isDraggingLens) {
-            val targetCenterX = (selectedIndex.coerceIn(0, tabCount - 1) + 0.5f) * tabWidthPx
-            if (!isInitialized) {
-                lensX.snapTo(targetCenterX)
-                isInitialized = true
-            } else if (!isDraggingLens) {
-                lensX.animateTo(
-                    targetValue = targetCenterX,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMediumLow
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        tokens.baseBackground.copy(alpha = 0.85f),
+                        tokens.baseBackground
                     )
                 )
-            }
-        }
-
-        Box(
+            )
+            .windowInsetsPadding(WindowInsets.systemGestures.only(WindowInsetsSides.Horizontal))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(tabCount, barWidthPx, freeLensDragEnabled) {
-                    val touchSlop = viewConfig.touchSlop
-                    val longPressTimeout = viewConfig.longPressTimeoutMillis
-
-                    coroutineScope {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            val downTime = down.uptimeMillis
-                            val startPos = down.position
-                            val velocityTracker = VelocityTracker()
-                            velocityTracker.addPosition(downTime, startPos)
-
-                            var dragActivated = false
-                            var activeTabDuringDrag = currentSelectedIndex
-                            var pointerId = down.id
-                            var lastPosition = startPos
-
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == pointerId }
-                                    ?: event.changes.firstOrNull()
-                                if (change == null || !change.pressed) {
-                                    break
-                                }
-
-                                pointerId = change.id
-                                lastPosition = change.position
-                                velocityTracker.addPosition(change.uptimeMillis, lastPosition)
-
-                                val totalMove = (lastPosition - startPos).getDistance()
-                                val elapsed = change.uptimeMillis - downTime
-
-                                if (!dragActivated && (totalMove > touchSlop || elapsed >= longPressTimeout)) {
-                                    dragActivated = true
-                                    isDraggingLens = true
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                }
-
-                                if (dragActivated) {
-                                    val delta = change.positionChange()
-                                    change.consume()
-                                    horizontalVelocity = delta.x * 55f
-
-                                    val halfLens = lensWidthPx * 0.5f
-                                    val clampedX = lastPosition.x.coerceIn(halfLens, barWidthPx - halfLens)
-                                    val maxVert = if (freeLensDragEnabled) 95f else 6f
-                                    val clampedY = (lastPosition.y - barHeightPx * 0.5f)
-                                        .coerceIn(-maxVert, maxVert * 0.35f)
-
-                                    launch {
-                                        lensX.snapTo(clampedX)
-                                        lensY.snapTo(clampedY)
-                                    }
-
-                                    val candidateTab = ((clampedX / tabWidthPx).toInt()).coerceIn(0, tabCount - 1)
-                                    if (candidateTab != activeTabDuringDrag) {
-                                        val candidateCenter = (candidateTab + 0.5f) * tabWidthPx
-                                        if (abs(clampedX - candidateCenter) <= tabWidthPx * 0.38f) {
-                                            activeTabDuringDrag = candidateTab
-                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            currentOnSelect(candidateTab)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (!dragActivated) {
-                                val tappedTab = ((lastPosition.x / tabWidthPx).toInt()).coerceIn(0, tabCount - 1)
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                if (tappedTab != currentSelectedIndex) {
-                                    currentOnSelect(tappedTab)
-                                }
-                                val targetCenterX = (tappedTab + 0.5f) * tabWidthPx
-                                launch {
-                                    lensX.animateTo(
-                                        targetValue = targetCenterX,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioLowBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
-                            } else {
-                                val velX = velocityTracker.calculateVelocity().x
-                                horizontalVelocity = 0f
-                                isDraggingLens = false
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-
-                                val projectedX = (lensX.value + velX * 0.08f)
-                                    .coerceIn(tabWidthPx * 0.5f, barWidthPx - tabWidthPx * 0.5f)
-                                val finalTab = ((projectedX / tabWidthPx).toInt()).coerceIn(0, tabCount - 1)
-
-                                if (finalTab != currentSelectedIndex) {
-                                    currentOnSelect(finalTab)
-                                }
-
-                                val finalCenterX = (finalTab + 0.5f) * tabWidthPx
-                                launch {
-                                    lensX.animateTo(
-                                        targetValue = finalCenterX,
-                                        initialVelocity = velX * 0.25f,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioLowBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
-                                launch {
-                                    lensY.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                            stiffness = Spring.StiffnessMedium
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                .fillMaxWidth()
+                .height(64.dp)
+                .shadow(22.dp, RoundedCornerShape(32.dp))
+                .clip(RoundedCornerShape(32.dp))
+                .background(if (tokens.isDark) Color(0xF5070B14) else Color(0xF7F1F5F9))
+                .border(
+                    width = 1.2.dp,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.55f),
+                            tokens.accentColor.copy(alpha = 0.35f),
+                            Color.White.copy(alpha = 0.14f)
+                        )
+                    ),
+                    shape = RoundedCornerShape(32.dp)
+                )
         ) {
+            val barWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+            val barHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+            val tabCount = items.size.coerceAtLeast(1)
+            val tabWidthPx = barWidthPx / tabCount
+            val padPx = with(density) { 4.dp.toPx() }
+            val lensWidthPx = (tabWidthPx - padPx * 1.5f).coerceAtLeast(40f)
+            val lensHeightPx = (barHeightPx - padPx * 2f).coerceAtLeast(36f)
+
+            LaunchedEffect(selectedIndex, barWidthPx, isDraggingLens) {
+                val targetCenterX = (selectedIndex.coerceIn(0, tabCount - 1) + 0.5f) * tabWidthPx
+                if (!isInitialized) {
+                    lensX.snapTo(targetCenterX)
+                    isInitialized = true
+                } else if (!isDraggingLens) {
+                    lensX.animateTo(
+                        targetValue = targetCenterX,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .shadow(20.dp, RoundedCornerShape(32.dp))
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(tokens.navBarBackingColor)
-                    .background(
-                        Brush.linearGradient(
-                            colors = if (tokens.isDark) {
-                                listOf(
-                                    Color.White.copy(alpha = 0.14f),
-                                    Color.White.copy(alpha = 0.04f)
-                                )
-                            } else {
-                                listOf(
-                                    Color.White.copy(alpha = 0.92f),
-                                    Color.White.copy(alpha = 0.78f)
-                                )
+                    .pointerInput(tabCount, barWidthPx) {
+                        val touchSlop = viewConfig.touchSlop
+                        val longPressTimeout = viewConfig.longPressTimeoutMillis
+
+                        coroutineScope {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val downTime = down.uptimeMillis
+                                val startPos = down.position
+                                val velocityTracker = VelocityTracker()
+                                velocityTracker.addPosition(downTime, startPos)
+
+                                var dragActivated = false
+                                var activeTabDuringDrag = currentSelectedIndex
+                                var pointerId = down.id
+                                var lastPosition = startPos
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == pointerId }
+                                        ?: event.changes.firstOrNull()
+                                    if (change == null || !change.pressed) {
+                                        break
+                                    }
+
+                                    pointerId = change.id
+                                    lastPosition = change.position
+                                    velocityTracker.addPosition(change.uptimeMillis, lastPosition)
+
+                                    val totalMove = (lastPosition - startPos).getDistance()
+                                    val elapsed = change.uptimeMillis - downTime
+
+                                    if (!dragActivated && (totalMove > touchSlop || elapsed >= longPressTimeout)) {
+                                        dragActivated = true
+                                        isDraggingLens = true
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+
+                                    if (dragActivated) {
+                                        val delta = change.positionChange()
+                                        change.consume()
+                                        horizontalVelocity = delta.x * 50f
+
+                                        val minCenter = tabWidthPx * 0.5f
+                                        val maxCenter = barWidthPx - tabWidthPx * 0.5f
+                                        val clampedX = lastPosition.x.coerceIn(minCenter, maxCenter)
+
+                                        launch {
+                                            lensX.snapTo(clampedX)
+                                        }
+
+                                        val candidateTab = ((clampedX / tabWidthPx).toInt()).coerceIn(0, tabCount - 1)
+                                        if (candidateTab != activeTabDuringDrag) {
+                                            val candidateCenter = (candidateTab + 0.5f) * tabWidthPx
+                                            if (abs(clampedX - candidateCenter) <= tabWidthPx * 0.38f) {
+                                                activeTabDuringDrag = candidateTab
+                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                currentOnSelect(candidateTab)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (!dragActivated) {
+                                    val tappedTab = ((lastPosition.x / tabWidthPx).toInt()).coerceIn(0, tabCount - 1)
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    if (tappedTab != currentSelectedIndex) {
+                                        currentOnSelect(tappedTab)
+                                    }
+                                    val targetCenterX = (tappedTab + 0.5f) * tabWidthPx
+                                    launch {
+                                        lensX.animateTo(
+                                            targetValue = targetCenterX,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    val velX = velocityTracker.calculateVelocity().x
+                                    horizontalVelocity = 0f
+                                    isDraggingLens = false
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+
+                                    val projectedX = (lensX.value + velX * 0.08f)
+                                        .coerceIn(tabWidthPx * 0.5f, barWidthPx - tabWidthPx * 0.5f)
+                                    val finalTab = ((projectedX / tabWidthPx).toInt()).coerceIn(0, tabCount - 1)
+
+                                    if (finalTab != currentSelectedIndex) {
+                                        currentOnSelect(finalTab)
+                                    }
+
+                                    val finalCenterX = (finalTab + 0.5f) * tabWidthPx
+                                    launch {
+                                        lensX.animateTo(
+                                            targetValue = finalCenterX,
+                                            initialVelocity = velX * 0.20f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                    }
+                                }
                             }
-                        )
-                    )
-                    .border(
-                        width = 1.2.dp,
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.55f),
-                                tokens.accentColor.copy(alpha = 0.30f),
-                                Color.White.copy(alpha = 0.12f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(32.dp)
-                    )
-                    .graphicsLayer {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                            agslShader != null &&
-                            !tokens.powerSaveMode &&
-                            refractionStrength > 0.02f
-                        ) {
-                            agslShader.setFloatUniform("lensCenter", lensX.value, barHeightPx * 0.5f + lensY.value)
-                            agslShader.setFloatUniform(
-                                "lensRadius",
-                                (lensWidthPx * 0.5f) * stretchX,
-                                (lensHeightPx * 0.5f) * stretchY
-                            )
-                            agslShader.setFloatUniform("refractionStrength", refractionStrength)
-                            agslShader.setFloatUniform("isDragging", if (isDraggingLens) 1f else 0f)
-                            renderEffect = AndroidRenderEffect
-                                .createRuntimeShaderEffect(agslShader, "content")
-                                .asComposeRenderEffect()
-                        } else {
-                            renderEffect = null
                         }
                     }
             ) {
+                // Слой иконок и подписей
                 Row(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                agslShader != null &&
+                                !tokens.powerSaveMode &&
+                                refractionStrength > 0.02f
+                            ) {
+                                agslShader.setFloatUniform("lensCenter", lensX.value, barHeightPx * 0.5f)
+                                agslShader.setFloatUniform(
+                                    "lensRadius",
+                                    (lensWidthPx * 0.5f) * stretchX,
+                                    (lensHeightPx * 0.5f) * stretchY
+                                )
+                                agslShader.setFloatUniform("refractionStrength", refractionStrength)
+                                agslShader.setFloatUniform("isDragging", if (isDraggingLens) 1f else 0f)
+                                renderEffect = AndroidRenderEffect
+                                    .createRuntimeShaderEffect(agslShader, "content")
+                                    .asComposeRenderEffect()
+                            } else {
+                                renderEffect = null
+                            }
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     items.forEachIndexed { index, item ->
@@ -346,12 +332,7 @@ fun GlassLensTabBar(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .padding(horizontal = 2.dp)
-                                .graphicsLayer {
-                                    val zoom = 1f + proximity * (if (isDraggingLens) 0.10f else 0.05f)
-                                    scaleX = zoom
-                                    scaleY = zoom
-                                },
+                                .padding(horizontal = 2.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
@@ -377,88 +358,69 @@ fun GlassLensTabBar(
                         }
                     }
                 }
-            }
 
-            val lensWidthDp = with(density) { lensWidthPx.toDp() }
-            val lensHeightDp = with(density) { lensHeightPx.toDp() }
+                // Слой линзы, строго центрированный по вертикали и зажатый внутри границ панели
+                val lensWidthDp = with(density) { lensWidthPx.toDp() }
+                val lensHeightDp = with(density) { lensHeightPx.toDp() }
 
-            Canvas(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = (lensX.value - lensWidthPx * 0.5f).roundToInt(),
-                            y = ((barHeightPx - lensHeightPx) * 0.5f + lensY.value).roundToInt()
-                        )
-                    }
-                    .size(lensWidthDp, lensHeightDp)
-                    .graphicsLayer {
-                        scaleX = stretchX
-                        scaleY = stretchY
-                    }
-            ) {
-                val corner = CornerRadius(size.height / 2f, size.height / 2f)
-                val px = tokens.parallaxOffset.x
-                val py = tokens.parallaxOffset.y
+                Canvas(
+                    modifier = Modifier
+                        .offset {
+                            val minLeft = padPx
+                            val maxLeft = (barWidthPx - lensWidthPx - padPx).coerceAtLeast(minLeft)
+                            val clampedLeft = (lensX.value - lensWidthPx * 0.5f).coerceIn(minLeft, maxLeft)
+                            val centeredTop = (barHeightPx - lensHeightPx) * 0.5f
+                            IntOffset(
+                                x = clampedLeft.roundToInt(),
+                                y = centeredTop.roundToInt()
+                            )
+                        }
+                        .size(lensWidthDp, lensHeightDp)
+                        .graphicsLayer {
+                            scaleX = stretchX
+                            scaleY = stretchY
+                        }
+                ) {
+                    val corner = CornerRadius(size.height / 2f, size.height / 2f)
+                    val px = tokens.parallaxOffset.x
 
-                drawRoundRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            tokens.accentColor.copy(alpha = if (isDraggingLens) 0.38f else 0.25f),
-                            tokens.secondaryAccent.copy(alpha = 0.10f),
-                            Color.Transparent
+                    drawRoundRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                tokens.accentColor.copy(alpha = if (isDraggingLens) 0.36f else 0.24f),
+                                tokens.secondaryAccent.copy(alpha = 0.10f),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.5f + px * 0.4f, size.height * 0.5f),
+                            radius = size.maxDimension * 0.75f
                         ),
-                        center = Offset(size.width * 0.5f + px * 0.5f, size.height * 0.5f + py * 0.5f),
-                        radius = size.maxDimension * 0.75f
-                    ),
-                    cornerRadius = corner
-                )
+                        cornerRadius = corner
+                    )
 
-                val bodyAlpha = if (isDraggingLens) 0.16f else 0.22f
-                drawRoundRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = bodyAlpha + 0.12f),
-                            tokens.accentColor.copy(alpha = bodyAlpha * 0.65f),
-                            Color.White.copy(alpha = bodyAlpha * 0.30f)
+                    val bodyAlpha = if (isDraggingLens) 0.18f else 0.22f
+                    drawRoundRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = bodyAlpha + 0.10f),
+                                tokens.accentColor.copy(alpha = bodyAlpha * 0.65f),
+                                Color.White.copy(alpha = bodyAlpha * 0.30f)
+                            )
                         ),
-                        start = Offset(px, py),
-                        end = Offset(size.width - px, size.height - py)
-                    ),
-                    cornerRadius = corner
-                )
+                        cornerRadius = corner
+                    )
 
-                val highlightShiftX = ((lensX.value / barWidthPx) - 0.5f) * 14f + px * 0.6f
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = if (isDraggingLens) 0.52f else 0.34f),
-                            Color.Transparent
+                    drawRoundRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.95f),
+                                tokens.accentColor.copy(alpha = 0.85f),
+                                Color.White.copy(alpha = 0.25f)
+                            )
                         ),
-                        startY = 0f,
-                        endY = size.height * 0.48f
-                    ),
-                    topLeft = Offset(
-                        x = (size.width * 0.10f + highlightShiftX).coerceIn(4f, size.width * 0.22f),
-                        y = size.height * 0.08f
-                    ),
-                    size = Size(size.width * 0.80f, size.height * 0.36f),
-                    cornerRadius = CornerRadius(size.height * 0.24f)
-                )
-
-                drawRoundRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.95f),
-                            tokens.accentColor.copy(alpha = 0.85f),
-                            Color(0xFFF72585).copy(alpha = if (isDraggingLens) 0.65f else 0.28f),
-                            Color.White.copy(alpha = 0.22f)
-                        ),
-                        start = Offset(0f + px, 0f + py),
-                        end = Offset(size.width, size.height)
-                    ),
-                    cornerRadius = corner,
-                    style = Stroke(width = borderStrokeWidth.toPx())
-                )
+                        cornerRadius = corner,
+                        style = Stroke(width = borderStrokeWidth.toPx())
+                    )
+                }
             }
         }
     }

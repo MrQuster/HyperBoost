@@ -5,6 +5,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
@@ -29,15 +30,18 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +53,20 @@ import com.example.volumeboost.R
 import com.example.volumeboost.data.BoostScaleMapper
 import com.example.volumeboost.ui.theme.LocalGlassTokens
 import kotlin.math.*
+
+@Composable
+fun rememberSystemAnimationsEnabled(): Boolean {
+    val context = LocalContext.current
+    return remember {
+        runCatching {
+            Settings.Global.getFloat(
+                context.contentResolver,
+                Settings.Global.ANIMATOR_DURATION_SCALE,
+                1f
+            ) > 0.01f
+        }.getOrDefault(true)
+    }
+}
 
 @Composable
 fun rememberSensorParallax(enabled: Boolean): State<Offset> {
@@ -65,8 +83,8 @@ fun rememberSensorParallax(enabled: Boolean): State<Offset> {
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent?) {
                 event ?: return
-                val x = (-event.values[0] * 3.8f).coerceIn(-28f, 28f)
-                val y = (event.values[1] * 3.8f).coerceIn(-28f, 28f)
+                val x = (-event.values[0] * 3.6f).coerceIn(-24f, 24f)
+                val y = (event.values[1] * 3.6f).coerceIn(-24f, 24f)
                 rawOffset.value = Offset(x, y)
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -99,18 +117,24 @@ fun DynamicBlobBackground(
     animationSpeed: Float
 ) {
     val tokens = LocalGlassTokens.current
-    val infiniteTransition = rememberInfiniteTransition(label = "blobs")
+    val sysAnimEnabled = rememberSystemAnimationsEnabled()
+    val animateBlobs = sysAnimEnabled && !tokens.powerSaveMode && animationSpeed > 0.05f
 
-    val duration = ((10000 / animationSpeed.coerceAtLeast(0.2f)).toInt()).coerceIn(3000, 28000)
-    val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = duration, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "blobPhase"
-    )
+    val phaseState: State<Float> = if (animateBlobs) {
+        val infiniteTransition = rememberInfiniteTransition(label = "blobs")
+        val duration = ((11000 / animationSpeed.coerceAtLeast(0.2f)).toInt()).coerceIn(3500, 28000)
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2f * PI).toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = duration, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "blobPhase"
+        )
+    } else {
+        remember { mutableFloatStateOf(0.8f) }
+    }
 
     val blob1Color by animateColorAsState(
         targetValue = when {
@@ -145,45 +169,45 @@ fun DynamicBlobBackground(
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .blur(effectiveBlur)
         ) {
+            // Читаем phaseState.value только внутри фазы рисования (0 рекомпозиций)
+            val phase = phaseState.value
             val w = size.width
             val h = size.height
             val px = tokens.parallaxOffset.x
             val py = tokens.parallaxOffset.y
-            val boostFactor = (ln((boostPercent.coerceAtLeast(100) / 100f).toDouble()).toFloat() * 0.08f).coerceIn(0f, 0.25f)
-            val reactivePulse = 1f + (audioPeakLevel * 0.18f) + boostFactor
+            val boostFactor = (ln((boostPercent.coerceAtLeast(100) / 100f).toDouble()).toFloat() * 0.07f).coerceIn(0f, 0.22f)
+            val reactivePulse = 1f + (audioPeakLevel * 0.16f) + boostFactor
 
-            // Сниженная яркость пятен для соблюдения контраста WCAG AA (>4.5:1)
             val alphaBase = when {
-                tokens.isAmoled -> 0.20f
-                tokens.isDark -> 0.26f
-                else -> 0.22f
+                tokens.isAmoled -> 0.18f
+                tokens.isDark -> 0.22f
+                else -> 0.20f
             }
 
             drawCircle(
                 color = blob1Color.copy(alpha = alphaBase),
-                radius = w * 0.44f * reactivePulse,
+                radius = w * 0.42f * reactivePulse,
                 center = Offset(
-                    x = w * (0.25f + 0.10f * cos(phase)) + px * 1.8f,
-                    y = h * (0.20f + 0.08f * sin(phase)) + py * 1.8f
+                    x = w * (0.25f + 0.09f * cos(phase)) + px * 1.5f,
+                    y = h * (0.20f + 0.07f * sin(phase)) + py * 1.5f
                 )
             )
 
             drawCircle(
                 color = blob2Color.copy(alpha = alphaBase * 0.9f),
-                radius = w * 0.48f * reactivePulse,
+                radius = w * 0.46f * reactivePulse,
                 center = Offset(
-                    x = w * (0.76f + 0.10f * sin(phase * 0.8f)) - px * 1.5f,
-                    y = h * (0.72f + 0.08f * cos(phase * 0.8f)) - py * 1.5f
+                    x = w * (0.76f + 0.09f * sin(phase * 0.8f)) - px * 1.3f,
+                    y = h * (0.70f + 0.07f * cos(phase * 0.8f)) - py * 1.3f
                 )
             )
         }
 
-        // Тонкий выравнивающий слой затемнения для безупречной читаемости белого текста
         if (tokens.isDark && !tokens.isAmoled) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x40040711))
+                    .background(Color(0x4D040711))
             )
         }
     }
@@ -212,9 +236,9 @@ fun GlassCard(
         )
     } else {
         listOf(
-            Color.White.copy(alpha = 0.88f),
-            Color.White.copy(alpha = 0.68f),
-            Color.White.copy(alpha = 0.78f)
+            Color.White.copy(alpha = 0.90f),
+            Color.White.copy(alpha = 0.74f),
+            Color.White.copy(alpha = 0.82f)
         )
     }
 
@@ -264,6 +288,33 @@ fun GlassCard(
 }
 
 @Composable
+fun GlassSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val tokens = LocalGlassTokens.current
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacingSmall)
+    ) {
+        Text(
+            text = title,
+            color = tokens.accentColor,
+            fontSize = tokens.sectionHeaderSize,
+            fontWeight = FontWeight.ExtraBold
+        )
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacingMedium),
+                content = content
+            )
+        }
+    }
+}
+
+@Composable
 fun GlassButton(
     text: String,
     onClick: () -> Unit,
@@ -278,7 +329,7 @@ fun GlassButton(
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1.0f,
+        targetValue = if (isPressed) 0.96f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "btnScale"
     )
@@ -287,14 +338,14 @@ fun GlassButton(
     val bgBrush = when {
         isDanger -> Brush.linearGradient(
             listOf(
-                tokens.dangerColor.copy(alpha = 0.38f),
-                tokens.dangerColor.copy(alpha = 0.18f)
+                tokens.dangerColor.copy(alpha = 0.40f),
+                tokens.dangerColor.copy(alpha = 0.20f)
             )
         )
         isAccent -> Brush.linearGradient(
             listOf(
-                tokens.accentColor.copy(alpha = 0.38f),
-                tokens.secondaryAccent.copy(alpha = 0.22f)
+                tokens.accentColor.copy(alpha = 0.40f),
+                tokens.secondaryAccent.copy(alpha = 0.24f)
             )
         )
         else -> Brush.linearGradient(
@@ -313,7 +364,7 @@ fun GlassButton(
 
     Row(
         modifier = modifier
-            .heightIn(min = 46.dp)
+            .heightIn(min = tokens.minTouchTarget)
             .scale(scale)
             .clip(shape)
             .background(bgBrush)
@@ -329,7 +380,7 @@ fun GlassButton(
         if (icon != null) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = text,
                 tint = when {
                     isDanger -> Color(0xFFFF8FA3)
                     isAccent -> tokens.accentColor
@@ -368,11 +419,11 @@ fun GlassChip(
 
     Box(
         modifier = modifier
-            .heightIn(min = 38.dp)
+            .heightIn(min = 42.dp)
             .scale(scale)
             .clip(shape)
             .background(
-                if (selected) tokens.accentColor.copy(alpha = 0.34f)
+                if (selected) tokens.accentColor.copy(alpha = 0.36f)
                 else Color.White.copy(alpha = if (tokens.isDark) 0.12f else 0.65f)
             )
             .border(
@@ -474,7 +525,7 @@ fun GlassSlider(
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(40.dp)
+            .height(42.dp)
             .pointerInput(valueRange) {
                 detectTapGestures { offset ->
                     val newFrac = (offset.x / size.width).coerceIn(0f, 1f)
@@ -498,12 +549,14 @@ fun GlassSlider(
     ) {
         val trackHeight = 12.dp.toPx()
         val cy = size.height / 2f
-        val thumbX = (size.width * fraction).coerceIn(14.dp.toPx(), size.width - 14.dp.toPx())
+        val padX = 12.dp.toPx()
+        val usableW = (size.width - padX * 2f).coerceAtLeast(1f)
+        val thumbX = padX + usableW * fraction
 
         drawRoundRect(
             color = Color.White.copy(alpha = if (tokens.isDark) 0.16f else 0.55f),
-            topLeft = Offset(0f, cy - trackHeight / 2f),
-            size = Size(size.width, trackHeight),
+            topLeft = Offset(padX, cy - trackHeight / 2f),
+            size = Size(usableW, trackHeight),
             cornerRadius = CornerRadius(trackHeight / 2f)
         )
 
@@ -511,8 +564,8 @@ fun GlassSlider(
             brush = Brush.horizontalGradient(
                 colors = listOf(tokens.secondaryAccent, tokens.accentColor)
             ),
-            topLeft = Offset(0f, cy - trackHeight / 2f),
-            size = Size(thumbX, trackHeight),
+            topLeft = Offset(padX, cy - trackHeight / 2f),
+            size = Size((thumbX - padX).coerceAtLeast(trackHeight), trackHeight),
             cornerRadius = CornerRadius(trackHeight / 2f)
         )
 
@@ -540,9 +593,6 @@ fun GlassSlider(
     }
 }
 
-/**
- * Унифицированный горизонтальный ползунок с ровной шапкой (название слева, бейдж значения справа)
- */
 @Composable
 fun LabeledGlassSliderRow(
     title: String,
@@ -589,9 +639,6 @@ fun LabeledGlassSliderRow(
     }
 }
 
-/**
- * Вертикальный слайдер полосы эквалайзера без залипаний (с rememberUpdatedState и поддержкой тапа)
- */
 @Composable
 fun GlassVerticalSlider(
     freqLabel: String,
@@ -647,7 +694,6 @@ fun GlassVerticalSlider(
             val usableH = size.height - pad * 2f
             val thumbY = pad + usableH * (1f - clamped)
 
-            // Центральная нулевая риска (0 dB)
             drawLine(
                 color = Color.White.copy(alpha = 0.28f),
                 start = Offset(cx - 12.dp.toPx(), size.height / 2f),
@@ -699,8 +745,8 @@ fun GlassVerticalSlider(
 }
 
 /**
- * Круговой регулятор усиления, синхронизированный с линейным слайдером по единой шкале BoostScaleMapper,
- * с опорными рисками и крупным русским статусом в центре.
+ * Круговой стеклянный регулятор с ИДЕАЛЬНО КРУГЛОЙ двухслойной синусоидальной волной внутри сферы
+ * (строгая обрезка clipPath по внутреннему кругу, 0 рекомпозиций на кадр, компактный бейдж статуса).
  */
 @Composable
 fun CircularLiquidDial(
@@ -715,15 +761,26 @@ fun CircularLiquidDial(
     val tokens = LocalGlassTokens.current
     val haptics = LocalHapticFeedback.current
     val currentOnBoostChange by rememberUpdatedState(onBoostChange)
-    val reusableWavePath = remember { Path() }
+    val sysAnimEnabled = rememberSystemAnimationsEnabled()
 
-    val infiniteTransition = rememberInfiniteTransition(label = "dialWave")
-    val wavePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
-        label = "wavePhase"
-    )
+    // Переиспользуемые объекты Path без аллокаций в onDraw
+    val innerCircleClipPath = remember { Path() }
+    val primaryWavePath = remember { Path() }
+    val secondaryWavePath = remember { Path() }
+
+    // Анимируем волну только когда усилитель реально включён и анимации разрешены
+    val animateWave = isRunning && sysAnimEnabled && !tokens.powerSaveMode
+    val wavePhaseState: State<Float> = if (animateWave) {
+        val infiniteTransition = rememberInfiniteTransition(label = "dialWave")
+        infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = (2f * PI).toFloat(),
+            animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
+            label = "wavePhase"
+        )
+    } else {
+        remember { mutableFloatStateOf(0.6f) }
+    }
 
     val dialColor by animateColorAsState(
         targetValue = if (isRunning) tokens.accentColor else Color(0xFF7B8794),
@@ -736,7 +793,7 @@ fun CircularLiquidDial(
 
     Box(
         modifier = modifier
-            .size(256.dp)
+            .size(252.dp)
             .pointerInput(unlimitedMode) {
                 detectDragGestures { change, _ ->
                     change.consume()
@@ -758,57 +815,109 @@ fun CircularLiquidDial(
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        ) {
+            val phase = wavePhaseState.value
             val stroke = 15.dp.toPx()
             val radius = (size.minDimension - stroke * 2.6f) / 2f
             val center = Offset(size.width / 2f, size.height / 2f)
+            val innerRadius = radius - 15.dp.toPx()
 
+            // 1. Внутренняя стеклянная сфера
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = if (tokens.isDark) 0.14f else 0.70f),
-                        dialColor.copy(alpha = 0.10f)
-                    )
+                        Color.White.copy(alpha = if (tokens.isDark) 0.12f else 0.65f),
+                        dialColor.copy(alpha = 0.08f)
+                    ),
+                    center = center,
+                    radius = innerRadius
                 ),
-                radius = radius - 14.dp.toPx(),
+                radius = innerRadius,
                 center = center
             )
 
-            // Живая жидкая волна внутри сферы
-            val innerRadius = radius - 16.dp.toPx()
-            reusableWavePath.reset()
-            val waterTopY = center.y + innerRadius - (2f * innerRadius * fillRatio)
-            val waveAmp = (4.dp.toPx() + audioPeak * 14.dp.toPx())
-
-            reusableWavePath.moveTo(center.x - innerRadius, center.y + innerRadius)
-            var x = center.x - innerRadius
-            while (x <= center.x + innerRadius) {
-                val normX = (x - (center.x - innerRadius)) / (2f * innerRadius)
-                val y = waterTopY + sin(normX * 2f * PI + wavePhase).toFloat() * waveAmp
-                reusableWavePath.lineTo(x, y)
-                x += 8f
-            }
-            reusableWavePath.lineTo(center.x + innerRadius, center.y + innerRadius)
-            reusableWavePath.close()
-
-            drawPath(
-                path = reusableWavePath,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        dialColor.copy(alpha = 0.26f),
-                        tokens.secondaryAccent.copy(alpha = 0.08f)
-                    )
+            // 2. СТРОГАЯ КРУГОВАЯ МАСКА ОТСЕЧЕНИЯ для двух слоёв жидкой волны (исправление квадратной волны!)
+            innerCircleClipPath.reset()
+            innerCircleClipPath.addOval(
+                Rect(
+                    left = center.x - innerRadius,
+                    top = center.y - innerRadius,
+                    right = center.x + innerRadius,
+                    bottom = center.y + innerRadius
                 )
             )
 
-            // Опорные риски шкалы вдоль дуги (0%, 100% на 0.25, 200% на 0.50, 500% на 0.75, MAX на 1.0)
-            val tickFractions = listOf(0f, 0.25f, 0.50f, 0.75f, 1.0f)
+            clipPath(innerCircleClipPath) {
+                val leftX = center.x - innerRadius
+                val rightX = center.x + innerRadius
+                val bottomY = center.y + innerRadius
+                val waterTopY = bottomY - (2f * innerRadius * fillRatio.coerceIn(0.04f, 0.96f))
+                val waveAmp = if (isRunning) (5.dp.toPx() + audioPeak * 12.dp.toPx()) else 2.5.dp.toPx()
+
+                // Задний слой волны (сдвинут по фазе)
+                secondaryWavePath.reset()
+                secondaryWavePath.moveTo(leftX, bottomY)
+                var x2 = leftX
+                while (x2 <= rightX + 6f) {
+                    val normX = (x2 - leftX) / (2f * innerRadius)
+                    val y = waterTopY + cos(normX * 2f * PI - phase * 0.85f).toFloat() * (waveAmp * 0.8f)
+                    secondaryWavePath.lineTo(x2, y)
+                    x2 += 7f
+                }
+                secondaryWavePath.lineTo(rightX, bottomY)
+                secondaryWavePath.close()
+
+                drawPath(
+                    path = secondaryWavePath,
+                    color = tokens.secondaryAccent.copy(alpha = if (isRunning) 0.22f else 0.10f)
+                )
+
+                // Передний слой волны
+                primaryWavePath.reset()
+                primaryWavePath.moveTo(leftX, bottomY)
+                var x1 = leftX
+                while (x1 <= rightX + 6f) {
+                    val normX = (x1 - leftX) / (2f * innerRadius)
+                    val y = waterTopY + sin(normX * 2f * PI + phase).toFloat() * waveAmp
+                    primaryWavePath.lineTo(x1, y)
+                    x1 += 7f
+                }
+                primaryWavePath.lineTo(rightX, bottomY)
+                primaryWavePath.close()
+
+                drawPath(
+                    path = primaryWavePath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            dialColor.copy(alpha = if (isRunning) 0.38f else 0.16f),
+                            tokens.secondaryAccent.copy(alpha = if (isRunning) 0.18f else 0.08f)
+                        ),
+                        startY = waterTopY - waveAmp,
+                        endY = bottomY
+                    )
+                )
+            }
+
+            // Тонкий внутренний ободок вокруг сферы волны
+            drawCircle(
+                color = Color.White.copy(alpha = 0.20f),
+                radius = innerRadius,
+                center = center,
+                style = Stroke(width = 1.dp.toPx())
+            )
+
+            // 3. Аккуратные промежуточные метки шкалы (25% = 100%, 50% = 200%, 75% = 500%) без наложения на концы дуги
+            val tickFractions = listOf(0.25f, 0.50f, 0.75f)
             tickFractions.forEach { tf ->
                 val tickRad = Math.toRadians((135f + 270f * tf).toDouble())
-                val innerR = radius + stroke * 0.65f
-                val outerR = radius + stroke * 1.15f
+                val innerR = radius + stroke * 0.78f
+                val outerR = radius + stroke * 1.18f
                 drawLine(
-                    color = if (fillRatio >= tf) tokens.accentColor else Color.White.copy(alpha = 0.35f),
+                    color = if (fillRatio >= tf) tokens.accentColor else Color.White.copy(alpha = 0.32f),
                     start = Offset(
                         center.x + innerR * cos(tickRad).toFloat(),
                         center.y + innerR * sin(tickRad).toFloat()
@@ -822,7 +931,7 @@ fun CircularLiquidDial(
                 )
             }
 
-            // Фоновая дуга (270 градусов)
+            // 4. Фоновая и активная дуга (270 градусов)
             drawArc(
                 color = Color.White.copy(alpha = 0.16f),
                 startAngle = 135f,
@@ -833,7 +942,6 @@ fun CircularLiquidDial(
                 style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
 
-            // Активная неоновая дуга
             val sweep = 270f * fillRatio
             drawArc(
                 brush = Brush.sweepGradient(
@@ -847,7 +955,7 @@ fun CircularLiquidDial(
                 style = Stroke(width = stroke, cap = StrokeCap.Round)
             )
 
-            // Стеклянная капля-бегунок на дуге
+            // 5. Стеклянная капля-бегунок на дуге
             val thumbAngleRad = Math.toRadians((135f + sweep).toDouble())
             val thumbCenter = Offset(
                 x = center.x + radius * cos(thumbAngleRad).toFloat(),
@@ -865,40 +973,50 @@ fun CircularLiquidDial(
             )
         }
 
+        // Центральная область нажатия (строго внутри внутренней сферы, не налезает на дугу!)
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
+                .size(152.dp)
                 .clip(CircleShape)
                 .clickable {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onTogglePower()
                 }
-                .padding(16.dp)
+                .padding(8.dp)
         ) {
             Text(
                 text = "$boostPercent%",
                 color = tokens.textPrimary,
-                fontSize = if (boostPercent >= 1000) 36.sp else 42.sp,
-                fontWeight = FontWeight.Black
+                fontSize = if (boostPercent >= 1000) 34.sp else 40.sp,
+                fontWeight = FontWeight.Black,
+                style = TextStyle(
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = 0.65f),
+                        offset = Offset(0f, 3f),
+                        blurRadius = 8f
+                    )
+                )
             )
             Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (isRunning) tokens.accentColor.copy(alpha = 0.24f)
-                        else Color.White.copy(alpha = 0.14f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .border(
+                        width = 1.dp,
+                        color = if (isRunning) tokens.accentColor.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = if (isRunning) stringResource(R.string.dial_status_on)
-                    else stringResource(R.string.dial_status_off),
+                    text = if (isRunning) "АКТИВЕН • СТОП" else "ВЫКЛ • СТАРТ",
                     color = if (isRunning) tokens.accentColor else tokens.textSecondary,
-                    fontSize = 11.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    textAlign = TextAlign.Center
+                    maxLines = 1
                 )
             }
         }
@@ -947,33 +1065,6 @@ fun GlassDialog(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun GlassSection(
-    title: String,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    val tokens = LocalGlassTokens.current
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(tokens.spacingSmall)
-    ) {
-        Text(
-            text = title,
-            color = tokens.accentColor,
-            fontSize = tokens.sectionHeaderSize,
-            fontWeight = FontWeight.ExtraBold
-        )
-        GlassCard(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(tokens.spacingMedium),
-                content = content
-            )
         }
     }
 }

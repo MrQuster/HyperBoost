@@ -13,21 +13,20 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
-// Вычисление версии из параметра -PversionName или тега GitHub Actions (например v1.0.0 -> 1.0.0)
 val rawTagVersion = (project.findProperty("versionName") as? String)
     ?: System.getenv("GITHUB_REF_NAME")?.removePrefix("v")
-    ?: "1.0.0"
+    ?: "1.2.0"
 
 val cleanVersionName = if (rawTagVersion.matches(Regex("""^\d+\.\d+\.\d+.*"""))) {
     rawTagVersion
 } else {
-    "1.0.0"
+    "1.2.0"
 }
 
 fun computeDeterministicVersionCode(ver: String): Int {
     val core = ver.substringBefore("-").split(".")
     val major = core.getOrNull(0)?.toIntOrNull() ?: 1
-    val minor = core.getOrNull(1)?.toIntOrNull() ?: 0
+    val minor = core.getOrNull(1)?.toIntOrNull() ?: 2
     val patch = core.getOrNull(2)?.toIntOrNull() ?: 0
     return (major * 10000 + minor * 100 + patch).coerceAtLeast(1)
 }
@@ -94,6 +93,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
@@ -109,6 +109,7 @@ dependencies {
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
@@ -120,6 +121,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
+    implementation(libs.androidx.profileinstaller)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)

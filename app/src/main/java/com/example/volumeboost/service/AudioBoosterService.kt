@@ -1103,61 +1103,65 @@ class AudioBoosterService : Service() {
         }
 
         visualizerLoopJob = serviceScope.launch {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
             val waveBytes = ByteArray(128)
-            var phase = 0f
-            while (isActive && _runtimeState.value.activeMode == BoostMode.STANDARD) {
-                val musicActive = audioManager.isMusicActive
-                val boost = targetBoostPercent
-                val boostFactor = (ln((boost.coerceAtLeast(60) / 50.0)).toFloat() * 0.34f).coerceIn(0.15f, 1.0f)
+            val emptyBars = List(SPECTRUM_BAR_COUNT) { 0f }
 
+            while (isActive && _runtimeState.value.activeMode == BoostMode.STANDARD) {
+                val screenOn = powerManager?.isInteractive ?: true
+                if (!screenOn) {
+                    // Когда экран выключен, не нагружаем CPU расчётом спектра
+                    delay(500L)
+                    continue
+                }
+
+                val musicActive = audioManager.isMusicActive
                 var hardwarePeak = 0f
+                var sumSq = 0f
+                val bucketBars = FloatArray(SPECTRUM_BAR_COUNT)
+
                 val vis = systemVisualizer
-                if (vis != null && vis.enabled) {
+                if (musicActive && vis != null && vis.enabled) {
                     runCatching {
                         if (vis.getWaveForm(waveBytes) == Visualizer.SUCCESS) {
-                            var maxDiff = 0
-                            for (b in waveBytes) {
-                                val unsigned = b.toInt() and 0xFF
-                                val centered = abs(unsigned - 128)
-                                if (centered > maxDiff) maxDiff = centered
+                            val step = (waveBytes.size / SPECTRUM_BAR_COUNT).coerceAtLeast(1)
+                            for (i in waveBytes.indices) {
+                                val unsigned = waveBytes[i].toInt() and 0xFF
+                                val norm = abs(unsigned - 128) / 128f
+                                if (norm > hardwarePeak) hardwarePeak = norm
+                                sumSq += norm * norm
+                                val bIdx = (i / step).coerceIn(0, SPECTRUM_BAR_COUNT - 1)
+                                if (norm > bucketBars[bIdx]) bucketBars[bIdx] = norm
                             }
-                            hardwarePeak = (maxDiff / 128f).coerceIn(0f, 1f)
                         }
                     }
                 }
 
-                val isStreamActive = musicActive || hardwarePeak > 0.04f
+                val gainMul = (targetBoostPercent / 100f).coerceIn(0.5f, 4.0f)
+                val realPeak = (hardwarePeak * gainMul).coerceIn(0f, 1f)
+                val realRms = if (waveBytes.isNotEmpty()) {
+                    (sqrt(sumSq / waveBytes.size) * gainMul).coerceIn(0f, 1f)
+                } else 0f
+
+                val isStreamActive = musicActive && realPeak > 0.02f
                 val prevActive = _runtimeState.value.hasActiveAudioStream
 
                 if (isStreamActive) {
-                    phase += 0.38f
-                    val basePeak = if (hardwarePeak > 0.05f) {
-                        (hardwarePeak * (boost / 100f)).coerceIn(0.10f, 1.0f)
-                    } else {
-                        (boostFactor + (sin(phase) * 0.12f)).coerceIn(0.12f, 0.96f)
-                    }
-
-                    val bars = List(SPECTRUM_BAR_COUNT) { idx ->
-                        val freqCurve = sin((idx + 1f) / SPECTRUM_BAR_COUNT * PI).toFloat()
-                        val wave = abs(sin(phase + idx * 0.45f))
-                        (basePeak * (0.45f + 0.55f * freqCurve * wave)).coerceIn(0.06f, 1.0f)
-                    }
-                    val rms = (bars.sum() / SPECTRUM_BAR_COUNT).coerceIn(0.05f, 0.95f)
-                    val limiterActive = _runtimeState.value.limiterMode != LimiterMode.OFF && basePeak > 0.78f
-
+                    val scaledBars = bucketBars.map { (it * gainMul).coerceIn(0.05f, 1f) }
+                    val limiterActive = _runtimeState.value.limiterMode != LimiterMode.OFF && realPeak > 0.80f
                     _runtimeState.value = _runtimeState.value.copy(
                         hasActiveAudioStream = true,
-                        peakSignal = basePeak,
-                        rmsSignal = rms,
-                        spectrumBands = bars,
+                        peakSignal = realPeak,
+                        rmsSignal = realRms,
+                        spectrumBands = scaledBars,
                         isLimiterEngaged = limiterActive
                     )
-                } else {
+                } else if (_runtimeState.value.hasActiveAudioStream || _runtimeState.value.peakSignal > 0f) {
                     _runtimeState.value = _runtimeState.value.copy(
                         hasActiveAudioStream = false,
                         peakSignal = 0f,
                         rmsSignal = 0f,
-                        spectrumBands = List(SPECTRUM_BAR_COUNT) { 0f },
+                        spectrumBands = emptyBars,
                         isLimiterEngaged = false
                     )
                 }
@@ -1165,7 +1169,7 @@ class AudioBoosterService : Service() {
                 if (prevActive != isStreamActive) {
                     islandUpdateChannel.trySend(targetBoostPercent)
                 }
-                delay(75L)
+                delay(if (isStreamActive) 45L else 220L)
             }
         }
     }
@@ -1209,10 +1213,12 @@ class AudioBoosterService : Service() {
 
     private fun calculateGainMillibels(boostPercent: Int): Int {
         if (boostPercent <= 100) return 0
+        // В диапазоне 100..1000% используем точную акустическую формулу: 1 дБ = 100 мБ -> 2000 * log10(boost/100)
+        // При 500% (5.0x) это даёт ровно +1398 мБ (+14.0 дБ). Выше 1000% разгоняем до потолка 30 000 мБ.
         val rawGainMb = if (boostPercent <= 1000) {
-            ((boostPercent - 100) * 16.666).roundToInt()
+            (2000.0 * log10(boostPercent / 100.0)).roundToInt()
         } else {
-            15000 + (((boostPercent - 1000) / 9000.0) * 15000.0).roundToInt()
+            2000 + (((boostPercent - 1000) / 9000.0) * 28000.0).roundToInt()
         }
         return rawGainMb.coerceIn(0, MAX_HARDWARE_MILLIBELS)
     }
