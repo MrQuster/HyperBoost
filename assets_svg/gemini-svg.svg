@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#05070F" />
+      <stop offset="100%" stop-color="#121B3A" />
+    </linearGradient>
+    <radialGradient id="orbCyan" cx="50%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#00F5D4" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#00F5D4" stop-opacity="0.0" />
+    </radialGradient>
+    <linearGradient id="dropGlass" x1="20%" y1="15%" x2="80%" y2="85%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.55" />
+      <stop offset="50%" stop-color="#00B4D8" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#7209B7" stop-opacity="0.25" />
+    </linearGradient>
+    <linearGradient id="dropStroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.15" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="220" fill="url(#bg2)" />
+  <circle cx="512" cy="460" r="420" fill="url(#orbCyan)" />
+
+  <!-- Контур жидкой капли -->
+  <path d="M 512 190 C 512 190 770 465 770 630 C 770 772 654 850 512 850 C 370 850 254 772 254 630 C 254 465 512 190 512 190 Z" fill="url(#dropGlass)" stroke="url(#dropStroke)" stroke-width="14" />
+
+  <!-- Акустический импульс внутри капли -->
+  <path d="M 340 620 L 405 620 L 445 510 L 490 720 L 538 440 L 582 680 L 620 570 L 684 570" fill="none" stroke="#00F5D4" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

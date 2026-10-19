@@ -1,0 +1,100 @@
+<resources>
+    <string name="app_name">HyperBoost</string>
+    <string name="subtitle_engine">Аудиодвижок Liquid Glass</string>
+    <string name="tile_label">Усилитель</string>
+    <string name="widget_name">HyperBoost Виджет</string>
+
+    <!-- Навигация -->
+    <string name="nav_home">Главная</string>
+    <string name="nav_eq">Эквалайзер</string>
+    <string name="nav_devices">Устройства</string>
+    <string name="nav_system">Система</string>
+    <string name="nav_settings">Настройки</string>
+
+    <!-- Ярлыки -->
+    <string name="shortcut_on_short">Включить</string>
+    <string name="shortcut_on_long">Включить усиление</string>
+    <string name="shortcut_plus10_short">+10% буст</string>
+    <string name="shortcut_plus10_long">Увеличить усиление на +10%</string>
+    <string name="shortcut_off_short">Выключить</string>
+    <string name="shortcut_off_long">Отключить усилитель звука</string>
+
+    <!-- Главная и Круговой регулятор -->
+    <string name="dial_status_on">АКТИВЕН • НАЖМИТЕ ДЛЯ СТОПА</string>
+    <string name="dial_status_off">ВЫКЛЮЧЕН • НАЖМИТЕ ДЛЯ СТАРТА</string>
+    <string name="status_idle">Усилитель в режиме ожидания</string>
+    <string name="status_active_soft">Системный тракт активен • +%.1f дБ</string>
+    <string name="status_active_capture">Прямой захват звука • Множитель %.2fx</string>
+    <string name="signal_meter">Уровень сигнала и пиков в реальном времени</string>
+    <string name="signal_no_audio">Нет сигнала (включите воспроизведение музыки)</string>
+    <string name="limiter_active_badge">ЛИМИТЕР АКТИВЕН</string>
+    <string name="limiter_idle_badge">Прямой тракт</string>
+    <string name="mode_soft_title">Мягкий режим (Системный)</string>
+    <string name="mode_soft_desc">Аппаратный LoudnessEnhancer без задержки звука</string>
+    <string name="mode_capture_title">Захват звука (HyperOS Fix)</string>
+    <string name="mode_capture_desc">Глубокий перехват PCM-потока с цифровым умножением</string>
+    <string name="drm_warning">Текущее приложение запрещает захват звука (DRM) или стоит на паузе.</string>
+    <string name="sleep_timer_title">Таймер автоотключения</string>
+    <string name="sleep_timer_off">Выкл</string>
+    <string name="test_sound_btn">Проверить стерео и усиление</string>
+
+    <!-- Эквалайзер -->
+    <string name="eq_title">Эквалайзер</string>
+    <string name="eq_subtitle">Многополосная коррекция и сцена</string>
+    <string name="eq_reset">Сбросить</string>
+    <string name="eq_save_custom">Сохранить пресет</string>
+    <string name="eq_delete_custom">Удалить</string>
+    <string name="eq_bass_boost">Усиление баса</string>
+    <string name="eq_virtualizer">Объёмный звук (3D)</string>
+    <string name="eq_balance">Баланс Лев / Прав</string>
+    <string name="eq_mono">Моно-режим (объединение каналов)</string>
+    <string name="eq_compressor">Порог DSP-лимитера</string>
+    <string name="eq_scroll_hint">Листайте пресеты вбок ↔</string>
+
+    <!-- Устройства -->
+    <string name="devices_title">Профили аудиоустройств</string>
+    <string name="devices_connected">Активный выход</string>
+    <string name="devices_saved">Сохранённые профили</string>
+    <string name="device_autostart">Автозапуск буста при подключении</string>
+    <string name="device_rename">Переименовать устройство</string>
+    <string name="device_pin">Закрепить вверху</string>
+    <string name="device_delete">Удалить профиль</string>
+    <string name="bt_abs_vol_title">Подсказка: Абсолютная громкость Bluetooth</string>
+    <string name="bt_abs_vol_desc">Если на Bluetooth-наушниках усиление выше 100% ощущается слабо, откройте раздел «Для разработчиков» и включите тумблер «Отключить абсолютный уровень громкости».</string>
+    <string name="open_dev_options">Открыть «Для разработчиков»</string>
+
+    <!-- Настройки и Суперостров -->
+    <string name="sec_island">Суперостров (Hyper Island) и Уведомления</string>
+    <string name="sec_sound">Звук, шкала усиления и DSP</string>
+    <string name="sec_appearance">Внешний вид и Линза Liquid Glass</string>
+    <string name="sec_behavior">Поведение и уведомления</string>
+    <string name="sec_data">Резервное копирование и сброс</string>
+
+    <string name="island_enable_toggle">Показывать управление в Суперострове</string>
+    <string name="island_style_label">Стиль компактного острова:</string>
+    <string name="island_only_playing">Показывать остров только при воспроизведении звука</string>
+    <string name="island_lockscreen_actions">Разрешить кнопки «−10% / +10%» на экране блокировки</string>
+    <string name="island_shizuku_toggle">Обход белого списка через Shizuku (опционально)</string>
+    <string name="island_test_btn">Проверить остров (5 сек)</string>
+    <string name="island_open_notif_btn">Настройки уведомлений</string>
+
+    <string name="island_action_minus_10" formatted="false">−10%</string>
+    <string name="island_action_plus_10" formatted="false">+10%</string>
+    <string name="island_action_stop">Выкл</string>
+    <string name="island_action_start">Вкл</string>
+
+    <string name="btn_export_json">Экспорт JSON</string>
+    <string name="btn_import_json">Импорт JSON</string>
+    <string name="btn_reset_settings">Сбросить настройки</string>
+    <string name="btn_clear_profiles">Очистить профили</string>
+    <string name="confirm_reset_title">Сбросить все настройки?</string>
+    <string name="confirm_reset_msg">Все параметры звука, эквалайзера, острова и оформления вернутся к значениям по умолчанию.</string>
+    <string name="confirm_clear_profiles_title">Очистить профили устройств?</string>
+    <string name="confirm_clear_profiles_msg">Все сохранённые профили Bluetooth и проводных наушников будут удалены.</string>
+    <string name="btn_confirm_delete">Подтвердить</string>
+    <string name="copy_diag_btn">Скопировать отчёт</string>
+
+    <string name="notif_channel_name">Суперостров и служба HyperBoost</string>
+    <string name="action_ok">ОК</string>
+    <string name="action_cancel">Отмена</string>
+</resources>

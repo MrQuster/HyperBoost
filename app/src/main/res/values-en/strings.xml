@@ -1,0 +1,100 @@
+<resources>
+    <string name="app_name">HyperBoost</string>
+    <string name="subtitle_engine">Liquid Glass Audio Engine</string>
+    <string name="tile_label">Volume Boost</string>
+    <string name="widget_name">HyperBoost Widget</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_eq">Equalizer</string>
+    <string name="nav_devices">Devices</string>
+    <string name="nav_system">System</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Shortcuts -->
+    <string name="shortcut_on_short">Turn On</string>
+    <string name="shortcut_on_long">Enable Volume Boost</string>
+    <string name="shortcut_plus10_short">+10% Boost</string>
+    <string name="shortcut_plus10_long">Increase boost by +10%</string>
+    <string name="shortcut_off_short">Turn Off</string>
+    <string name="shortcut_off_long">Disable Volume Booster</string>
+
+    <!-- Home & Dial -->
+    <string name="dial_status_on">ACTIVE • TAP TO STOP</string>
+    <string name="dial_status_off">INACTIVE • TAP TO START</string>
+    <string name="status_idle">Booster is standing by</string>
+    <string name="status_active_soft">System enhancer active • +%.1f dB</string>
+    <string name="status_active_capture">Direct PCM capture • Multiplier %.2fx</string>
+    <string name="signal_meter">Real-Time Signal &amp; Peak Meter</string>
+    <string name="signal_no_audio">No signal (play music to see level)</string>
+    <string name="limiter_active_badge">LIMITER ACTIVE</string>
+    <string name="limiter_idle_badge">Direct Path</string>
+    <string name="mode_soft_title">Soft Mode (System)</string>
+    <string name="mode_soft_desc">Zero-latency hardware LoudnessEnhancer</string>
+    <string name="mode_capture_title">Audio Capture (HyperOS Fix)</string>
+    <string name="mode_capture_desc">Deep PCM stream capture with digital multiplier</string>
+    <string name="drm_warning">Current app blocks audio capture (DRM) or is paused.</string>
+    <string name="sleep_timer_title">Auto-Off Sleep Timer</string>
+    <string name="sleep_timer_off">Off</string>
+    <string name="test_sound_btn">Test Stereo &amp; Boost</string>
+
+    <!-- Equalizer -->
+    <string name="eq_title">Equalizer</string>
+    <string name="eq_subtitle">Multi-band tuning &amp; soundstage</string>
+    <string name="eq_reset">Reset</string>
+    <string name="eq_save_custom">Save Preset</string>
+    <string name="eq_delete_custom">Delete</string>
+    <string name="eq_bass_boost">Bass Boost</string>
+    <string name="eq_virtualizer">3D Surround</string>
+    <string name="eq_balance">Balance L / R</string>
+    <string name="eq_mono">Mono Mode (channel downmix)</string>
+    <string name="eq_compressor">DSP Limiter Threshold</string>
+    <string name="eq_scroll_hint">Swipe presets horizontally ↔</string>
+
+    <!-- Devices -->
+    <string name="devices_title">Audio Output Profiles</string>
+    <string name="devices_connected">Active Output</string>
+    <string name="devices_saved">Saved Profiles</string>
+    <string name="device_autostart">Auto-enable boost on connect</string>
+    <string name="device_rename">Rename Device</string>
+    <string name="device_pin">Pin to Top</string>
+    <string name="device_delete">Delete Profile</string>
+    <string name="bt_abs_vol_title">Tip: Bluetooth Absolute Volume</string>
+    <string name="bt_abs_vol_desc">If Bluetooth boost above 100% feels weak, open Developer Options and enable "Disable absolute volume".</string>
+    <string name="open_dev_options">Open Developer Options</string>
+
+    <!-- Settings & Super Island -->
+    <string name="sec_island">Super Island (Hyper Island) &amp; Notifications</string>
+    <string name="sec_sound">Sound, Gain Scale &amp; DSP</string>
+    <string name="sec_appearance">Appearance &amp; Liquid Glass Lens</string>
+    <string name="sec_behavior">Behavior &amp; Notifications</string>
+    <string name="sec_data">Backup &amp; Reset</string>
+
+    <string name="island_enable_toggle">Show controls in Super Island</string>
+    <string name="island_style_label">Compact island style:</string>
+    <string name="island_only_playing">Show island only when audio is playing</string>
+    <string name="island_lockscreen_actions">Allow "−10% / +10%" buttons on lock screen</string>
+    <string name="island_shizuku_toggle">Whitelist bypass via Shizuku (optional)</string>
+    <string name="island_test_btn">Test Island (5 sec)</string>
+    <string name="island_open_notif_btn">Notification Settings</string>
+
+    <string name="island_action_minus_10" formatted="false">−10%</string>
+    <string name="island_action_plus_10" formatted="false">+10%</string>
+    <string name="island_action_stop">Off</string>
+    <string name="island_action_start">On</string>
+
+    <string name="btn_export_json">Export JSON</string>
+    <string name="btn_import_json">Import JSON</string>
+    <string name="btn_reset_settings">Reset Settings</string>
+    <string name="btn_clear_profiles">Clear Profiles</string>
+    <string name="confirm_reset_title">Reset all settings?</string>
+    <string name="confirm_reset_msg">All sound, equalizer, island, and visual preferences will be restored to defaults.</string>
+    <string name="confirm_clear_profiles_title">Clear device profiles?</string>
+    <string name="confirm_clear_profiles_msg">All saved Bluetooth and wired headphone profiles will be deleted.</string>
+    <string name="btn_confirm_delete">Confirm</string>
+    <string name="copy_diag_btn">Copy Report</string>
+
+    <string name="notif_channel_name">HyperBoost Super Island &amp; Audio</string>
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+</resources>

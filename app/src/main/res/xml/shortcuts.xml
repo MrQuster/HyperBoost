@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="boost_on"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_on"
+        android:shortcutShortLabel="@string/shortcut_on_short"
+        android:shortcutLongLabel="@string/shortcut_on_long">
+        <intent
+            android:action="io.github.mrquster.hyperboost.SHORTCUT_ON"
+            android:targetClass="com.example.volumeboost.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="boost_plus_10"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_max"
+        android:shortcutShortLabel="@string/shortcut_plus10_short"
+        android:shortcutLongLabel="@string/shortcut_plus10_long">
+        <intent
+            android:action="io.github.mrquster.hyperboost.SHORTCUT_PLUS_10"
+            android:targetClass="com.example.volumeboost.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="boost_off"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_off"
+        android:shortcutShortLabel="@string/shortcut_off_short"
+        android:shortcutLongLabel="@string/shortcut_off_long">
+        <intent
+            android:action="io.github.mrquster.hyperboost.SHORTCUT_OFF"
+            android:targetClass="com.example.volumeboost.MainActivity" />
+    </shortcut>
+</shortcuts>

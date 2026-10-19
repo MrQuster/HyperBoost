@@ -1,0 +1,12 @@
+name: ✨ Предложить идею (Feature Request)
+description: Предложение новой функции или улучшения
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Описание идеи
+      placeholder: "Опишите, какую функцию вы хотели бы видеть в HyperBoost..."
+    validations:
+      required: true
