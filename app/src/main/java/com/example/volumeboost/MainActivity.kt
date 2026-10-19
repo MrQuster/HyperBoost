@@ -161,8 +161,8 @@ class MainActivity : AppCompatActivity() {
                         GlassTabItem(stringResource(R.string.nav_home), Icons.Default.Home),
                         GlassTabItem(stringResource(R.string.nav_eq), Icons.Default.Equalizer),
                         GlassTabItem(stringResource(R.string.nav_devices), Icons.Default.Headphones),
-                        GlassTabItem("Система", Icons.Default.Memory),
-                        GlassTabItem(stringResource(R.string.nav_settings), Icons.Default.Settings)
+                        GlassTabItem(stringResource(R.string.nav_settings), Icons.Default.Settings),
+                        GlassTabItem(stringResource(R.string.nav_system), Icons.Default.Memory)
                     )
 
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -197,12 +197,12 @@ class MainActivity : AppCompatActivity() {
                                         0 -> HomeScreen(homeViewModel, startEngineRequest)
                                         1 -> EqualizerScreen(eqViewModel)
                                         2 -> DevicesScreen(devicesViewModel)
-                                        3 -> SystemScreen(settingsViewModel)
-                                        4 -> SettingsScreen(
+                                        3 -> SettingsScreen(
                                             viewModel = settingsViewModel,
                                             homeViewModel = homeViewModel,
-                                            onOpenSystemTab = { homeViewModel.selectTab(3) }
+                                            onOpenSystemTab = { homeViewModel.selectTab(4) }
                                         )
+                                        4 -> SystemScreen(settingsViewModel)
                                     }
                                 }
                             }
@@ -217,12 +217,12 @@ class MainActivity : AppCompatActivity() {
                                     0 -> HomeScreen(homeViewModel, startEngineRequest)
                                     1 -> EqualizerScreen(eqViewModel)
                                     2 -> DevicesScreen(devicesViewModel)
-                                    3 -> SystemScreen(settingsViewModel)
-                                    4 -> SettingsScreen(
+                                    3 -> SettingsScreen(
                                         viewModel = settingsViewModel,
                                         homeViewModel = homeViewModel,
-                                        onOpenSystemTab = { homeViewModel.selectTab(3) }
+                                        onOpenSystemTab = { homeViewModel.selectTab(4) }
                                     )
+                                    4 -> SystemScreen(settingsViewModel)
                                 }
 
                                 GlassLensTabBar(

@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -17,6 +18,8 @@ import com.example.volumeboost.data.*
 import com.example.volumeboost.device.DeviceProfile
 import com.example.volumeboost.device.FeatureRegistry
 import com.example.volumeboost.device.IslandStrategy
+import com.example.volumeboost.device.TriStateStatus
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.roundToInt
 
 interface IslandPresenter {
@@ -27,7 +30,7 @@ interface IslandPresenter {
         channelId: String,
         snapshot: IslandSnapshot,
         intents: IslandPendingIntents
-    ): Notification
+    ): Pair<Notification, Int>
 }
 
 object HyperOsEnvironmentDetector {
@@ -53,9 +56,15 @@ object HyperOsEnvironmentDetector {
         }
     }
 
-    fun canPostFocusNotifications(context: Context): Boolean {
+    /**
+     * Честная трёхзначная проверка разрешения фокусных уведомлений:
+     * SUPPORTED (если провайдер явно вернул true или persist.sys.feature.island=true),
+     * UNSUPPORTED (если уведомления выключены или провайдер вернул false),
+     * UNKNOWN (если провайдер закрыт — требуется реальная пробная отправка).
+     */
+    fun queryFocusPermissionStatus(context: Context): TriStateStatus {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (!nm.areNotificationsEnabled()) return false
+        if (!nm.areNotificationsEnabled()) return TriStateStatus.UNSUPPORTED
 
         val uri = Uri.parse("content://miui.statusbar.notification.public")
         val extras = Bundle().apply { putString("package", context.packageName) }
@@ -64,9 +73,22 @@ object HyperOsEnvironmentDetector {
         }.getOrNull()
 
         if (providerAnswer != null && providerAnswer.containsKey("canShowFocus")) {
-            return providerAnswer.getBoolean("canShowFocus")
+            return if (providerAnswer.getBoolean("canShowFocus")) {
+                TriStateStatus.SUPPORTED
+            } else {
+                TriStateStatus.UNSUPPORTED
+            }
         }
-        return true
+
+        val islandProp = readSystemProperty("persist.sys.feature.island")
+        if (islandProp.equals("true", ignoreCase = true) || islandProp == "1") {
+            return TriStateStatus.SUPPORTED
+        }
+        return TriStateStatus.UNKNOWN
+    }
+
+    fun canAttemptFocusNotification(context: Context): Boolean {
+        return queryFocusPermissionStatus(context) != TriStateStatus.UNSUPPORTED
     }
 
     fun canPostPromotedLiveUpdates(context: Context): Boolean {
@@ -92,7 +114,7 @@ class SuperIslandPresenter : IslandPresenter {
 
     override fun isSupported(context: Context): Boolean {
         return HyperOsEnvironmentDetector.isXiaomiOrHyperOsDevice() &&
-                HyperOsEnvironmentDetector.canPostFocusNotifications(context)
+                HyperOsEnvironmentDetector.canAttemptFocusNotification(context)
     }
 
     override fun buildNotification(
@@ -100,7 +122,7 @@ class SuperIslandPresenter : IslandPresenter {
         channelId: String,
         snapshot: IslandSnapshot,
         intents: IslandPendingIntents
-    ): Notification {
+    ): Pair<Notification, Int> {
         val fraction = BoostScaleMapper.percentToFraction(snapshot.boostPercent, snapshot.unlimitedMode)
         val progress100 = (fraction * 100f).roundToInt().coerceIn(0, 100)
         val parsedColor = runCatching { Color.parseColor(snapshot.accentHex) }.getOrDefault(Color.parseColor("#00F5D4"))
@@ -115,9 +137,11 @@ class SuperIslandPresenter : IslandPresenter {
             .setContentIntent(intents.openApp)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setWhen(0L)
+            .setShowWhen(false)
             .setVisibility(
                 if (snapshot.allowLockscreenActions) NotificationCompat.VISIBILITY_PUBLIC
-                else NotificationCompat.VISIBILITY_PRIVATE
+                else NotificationCompat.VISIBILITY_SECRET
             )
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setProgress(100, progress100, false)
@@ -125,10 +149,10 @@ class SuperIslandPresenter : IslandPresenter {
         attachTwoStepAndToggleButtons(context, builder, snapshot, intents)
 
         val extras = Bundle()
-        MiuiSuperIslandJsonBuilder.attachMiuiFocusBundles(context, extras, snapshot, intents)
+        val validated = MiuiSuperIslandJsonBuilder.attachMiuiFocusBundles(context, extras, snapshot, intents)
         builder.addExtras(extras)
 
-        return builder.build()
+        return builder.build() to validated.sizeBytes
     }
 }
 
@@ -144,7 +168,7 @@ class LiveUpdatePresenter : IslandPresenter {
         channelId: String,
         snapshot: IslandSnapshot,
         intents: IslandPendingIntents
-    ): Notification {
+    ): Pair<Notification, Int> {
         val fraction = BoostScaleMapper.percentToFraction(snapshot.boostPercent, snapshot.unlimitedMode)
         val progress100 = (fraction * 100f).roundToInt().coerceIn(0, 100)
         val shortChipText = if (snapshot.styleMode == IslandStyleMode.ICON_ONLY) "" else "${snapshot.boostPercent}%"
@@ -159,6 +183,12 @@ class LiveUpdatePresenter : IslandPresenter {
             .setContentIntent(intents.openApp)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setWhen(0L)
+            .setShowWhen(false)
+            .setVisibility(
+                if (snapshot.allowLockscreenActions) NotificationCompat.VISIBILITY_PUBLIC
+                else NotificationCompat.VISIBILITY_SECRET
+            )
             .setProgress(100, progress100, false)
 
         val liveExtras = Bundle().apply {
@@ -172,7 +202,7 @@ class LiveUpdatePresenter : IslandPresenter {
         builder.addExtras(liveExtras)
         attachTwoStepAndToggleButtons(context, builder, snapshot, intents)
 
-        return builder.build()
+        return builder.build() to 128
     }
 }
 
@@ -186,7 +216,7 @@ class ClassicNotificationPresenter : IslandPresenter {
         channelId: String,
         snapshot: IslandSnapshot,
         intents: IslandPendingIntents
-    ): Notification {
+    ): Pair<Notification, Int> {
         val fraction = BoostScaleMapper.percentToFraction(snapshot.boostPercent, snapshot.unlimitedMode)
         val progress100 = (fraction * 100f).roundToInt().coerceIn(0, 100)
 
@@ -197,16 +227,19 @@ class ClassicNotificationPresenter : IslandPresenter {
             .setContentIntent(intents.openApp)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setWhen(0L)
+            .setShowWhen(false)
+            .setVisibility(
+                if (snapshot.allowLockscreenActions) NotificationCompat.VISIBILITY_PUBLIC
+                else NotificationCompat.VISIBILITY_SECRET
+            )
             .setProgress(100, progress100, false)
 
         attachTwoStepAndToggleButtons(context, builder, snapshot, intents)
-        return builder.build()
+        return builder.build() to 0
     }
 }
 
-/**
- * Единообразный набор кнопок для всех типов уведомлений и острова: только "−10%", "+10%" и "Выкл/Вкл"
- */
 private fun attachTwoStepAndToggleButtons(
     context: Context,
     builder: NotificationCompat.Builder,
@@ -235,13 +268,19 @@ private fun attachTwoStepAndToggleButtons(
 }
 
 data class IslandBuildResult(
+    val sequenceId: Long,
     val notification: Notification,
     val activeTierName: String,
+    val jsonSizeBytes: Int,
     val selectionReasonRu: String,
     val errorSummary: String
 )
 
 class IslandFallbackCoordinator(private val context: Context) {
+
+    companion object {
+        private val sequenceGenerator = AtomicLong(1L)
+    }
 
     private val superIsland = SuperIslandPresenter()
     private val liveUpdate = LiveUpdatePresenter()
@@ -259,6 +298,7 @@ class IslandFallbackCoordinator(private val context: Context) {
         deviceTypeTag: String,
         modeLabel: String
     ): IslandBuildResult {
+        val seqId = sequenceGenerator.getAndIncrement()
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         val isLocked = keyguard?.isKeyguardLocked ?: false
 
@@ -269,6 +309,7 @@ class IslandFallbackCoordinator(private val context: Context) {
         }
 
         val snapshot = IslandSnapshot(
+            sequenceNumber = seqId,
             isRunning = isRunning,
             isMusicPlaying = isMusicPlaying,
             boostPercent = boostPercent,
@@ -287,20 +328,24 @@ class IslandFallbackCoordinator(private val context: Context) {
         val intents = createPendingIntents(context)
 
         if (settings.islandOnlyWhenPlaying && !isMusicPlaying) {
-            val quietNotif = classic.buildNotification(context, channelId, snapshot, intents)
+            val (quietNotif, bytes) = classic.buildNotification(context, channelId, snapshot, intents)
             return IslandBuildResult(
+                sequenceId = seqId,
                 notification = quietNotif,
                 activeTierName = classic.presenterName,
+                jsonSizeBytes = bytes,
                 selectionReasonRu = "Остров свёрнут (музыка на паузе, включён режим «Только при воспроизведении»)",
                 errorSummary = "Нет ошибок"
             )
         }
 
         if (!settings.islandEnabled || settings.islandStyle == IslandStyleMode.DISABLED) {
-            val notif = classic.buildNotification(context, channelId, snapshot, intents)
+            val (notif, bytes) = classic.buildNotification(context, channelId, snapshot, intents)
             return IslandBuildResult(
+                sequenceId = seqId,
                 notification = notif,
                 activeTierName = classic.presenterName,
+                jsonSizeBytes = bytes,
                 selectionReasonRu = "Остров отключён пользователем в настройках",
                 errorSummary = "Нет ошибок"
             )
@@ -328,9 +373,12 @@ class IslandFallbackCoordinator(private val context: Context) {
                 presenter.buildNotification(context, channelId, snapshot, intents)
             }
             if (result.isSuccess) {
+                val (notif, bytes) = result.getOrThrow()
                 return IslandBuildResult(
-                    notification = result.getOrThrow(),
+                    sequenceId = seqId,
+                    notification = notif,
                     activeTierName = presenter.presenterName,
+                    jsonSizeBytes = bytes,
                     selectionReasonRu = plan.islandSelectionReasonRu,
                     errorSummary = lastError
                 )
@@ -339,10 +387,12 @@ class IslandFallbackCoordinator(private val context: Context) {
             }
         }
 
-        val fallbackNotif = classic.buildNotification(context, channelId, snapshot, intents)
+        val (fallbackNotif, bytes) = classic.buildNotification(context, channelId, snapshot, intents)
         return IslandBuildResult(
+            sequenceId = seqId,
             notification = fallbackNotif,
             activeTierName = classic.presenterName,
+            jsonSizeBytes = bytes,
             selectionReasonRu = "Активирован резервный вариант после отказа основного презентера",
             errorSummary = lastError
         )
@@ -351,13 +401,18 @@ class IslandFallbackCoordinator(private val context: Context) {
     private fun createPendingIntents(context: Context): IslandPendingIntents {
         val openApp = PendingIntent.getActivity(
             context,
-            100,
-            Intent(context, MainActivity::class.java),
+            200,
+            Intent(context, MainActivity::class.java).apply {
+                setPackage(context.packageName)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        fun broadcastPi(reqCode: Int, actionStr: String): PendingIntent {
-            val intent = Intent(context, IslandActionReceiver::class.java).apply {
+        fun explicitBroadcastPi(reqCode: Int, actionStr: String): PendingIntent {
+            val intent = Intent().apply {
+                component = ComponentName(context, IslandActionReceiver::class.java)
+                setPackage(context.packageName)
                 action = actionStr
             }
             return PendingIntent.getBroadcast(
@@ -370,9 +425,9 @@ class IslandFallbackCoordinator(private val context: Context) {
 
         return IslandPendingIntents(
             openApp = openApp,
-            stepMinus10 = broadcastPi(102, IslandActionReceiver.ACTION_STEP_MINUS),
-            stepPlus10 = broadcastPi(103, IslandActionReceiver.ACTION_STEP_PLUS),
-            togglePower = broadcastPi(101, IslandActionReceiver.ACTION_TOGGLE)
+            togglePower = explicitBroadcastPi(201, IslandActionReceiver.ACTION_TOGGLE),
+            stepMinus10 = explicitBroadcastPi(202, IslandActionReceiver.ACTION_STEP_MINUS),
+            stepPlus10 = explicitBroadcastPi(203, IslandActionReceiver.ACTION_STEP_PLUS)
         )
     }
 }

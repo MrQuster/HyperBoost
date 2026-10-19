@@ -16,7 +16,18 @@ class IslandActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         val action = intent?.action ?: return
-        val isRunning = AudioBoosterService.runtimeState.value.isRunning
+        val state = AudioBoosterService.runtimeState.value
+        val isRunning = state.isRunning
+
+        IslandEventLogger.record(
+            seqId = state.lastIslandSequenceId,
+            action = "BUTTON_CLICK:${action.substringAfterLast('.')}",
+            presenterTier = state.activeIslandTier,
+            boostPercent = state.currentBoostPercent,
+            jsonSizeBytes = 0,
+            isSuccess = true,
+            detail = "Получен клик из острова/уведомления (running=$isRunning)"
+        )
 
         when (action) {
             ACTION_TOGGLE -> {
@@ -34,20 +45,18 @@ class IslandActionReceiver : BroadcastReceiver() {
                 }
             }
             ACTION_STEP_MINUS -> {
-                dispatchToService(context, isRunning) {
-                    this.action = AudioBoosterService.ACTION_STEP_DOWN
-                }
+                dispatchStepToService(context, isRunning, AudioBoosterService.ACTION_STEP_DOWN)
             }
             ACTION_STEP_PLUS -> {
-                dispatchToService(context, isRunning) {
-                    this.action = AudioBoosterService.ACTION_STEP_UP
-                }
+                dispatchStepToService(context, isRunning, AudioBoosterService.ACTION_STEP_UP)
             }
         }
     }
 
-    private fun dispatchToService(context: Context, isRunning: Boolean, block: Intent.() -> Unit) {
-        val serviceIntent = Intent(context, AudioBoosterService::class.java).apply(block)
+    private fun dispatchStepToService(context: Context, isRunning: Boolean, serviceAction: String) {
+        val serviceIntent = Intent(context, AudioBoosterService::class.java).apply {
+            action = serviceAction
+        }
         if (isRunning) {
             context.startService(serviceIntent)
         } else {

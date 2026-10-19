@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.volumeboost.device.*
+import com.example.volumeboost.island.IslandEventLogger
 import com.example.volumeboost.ui.components.GlassButton
 import com.example.volumeboost.ui.components.GlassCard
 import com.example.volumeboost.ui.components.GlassChip
@@ -46,12 +47,15 @@ fun SystemScreen(viewModel: SettingsViewModel) {
     val profile by viewModel.deviceProfile.collectAsState()
     val isScanning by viewModel.isScanningProfile.collectAsState()
     val runtime by viewModel.runtimeState.collectAsState()
+    val islandLogs by IslandEventLogger.entriesFlow.collectAsState()
+    val selfTestItems by IslandEventLogger.selfTestResults.collectAsState()
 
     val isEn = settings.languageCode == "en"
     val plan = remember(profile, settings.islandRoutingPreference, settings.powerSaveGlass) {
         FeatureRegistry.resolvePlan(profile, settings.islandRoutingPreference, settings.powerSaveGlass)
     }
 
+    var showIslandLogExpanded by remember { mutableStateOf(false) }
     var showSignalsExpanded by remember { mutableStateOf(false) }
     var showOverridePicker by remember { mutableStateOf(false) }
 
@@ -97,12 +101,12 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     } else {
                         Box(
                             modifier = Modifier
-                                .size(44.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(tokens.accentColor.copy(alpha = 0.22f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Memory, contentDescription = null, tint = tokens.accentColor)
+                            Icon(Icons.Default.Memory, contentDescription = "Устройство", tint = tokens.accentColor)
                         }
                     }
                 }
@@ -187,25 +191,28 @@ fun SystemScreen(viewModel: SettingsViewModel) {
             }
         }
 
-        // 5. Секция «Уведомления и Суперостров»
-        SysSectionTitle("Уведомления и Суперостров")
+        // 5. Секция «Уведомления, Суперостров и Журнал самопроверки»
+        SysSectionTitle("Суперостров: Самопроверка и Журнал событий")
         GlassCard(modifier = Modifier.fillMaxWidth()) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 KeyValueRow("Выбранная стратегия", plan.selectedIslandStrategy.titleRu)
                 KeyValueRow("Активный презентер", runtime.activeIslandTier.ifBlank { settings.lastActiveIslandTier })
                 KeyValueRow("Причина выбора", runtime.islandSelectionReason.ifBlank { plan.islandSelectionReasonRu })
                 KeyValueRow("Статус фокусных уведомлений", "${profile.focusNotificationStatus.symbol} ${profile.focusNotificationStatus.labelRu}")
-                KeyValueRow("Последняя отправка острова", runtime.lastIslandError.ifBlank { settings.lastIslandError })
+                KeyValueRow("Последний пакет острова", "Seq #${runtime.lastIslandSequenceId} • ${runtime.lastIslandError.ifBlank { settings.lastIslandError }}")
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     GlassButton(
-                        text = "Тест острова (5с)",
-                        icon = Icons.Default.Visibility,
+                        text = "Самотест острова",
+                        icon = Icons.Default.FactCheck,
                         isAccent = true,
-                        onClick = { viewModel.triggerIslandPreview() },
+                        onClick = {
+                            viewModel.triggerIslandPreview()
+                            Toast.makeText(context, "Запущен 5-шаговый самотест острова...", Toast.LENGTH_SHORT).show()
+                        },
                         modifier = Modifier.weight(1f)
                     )
                     GlassButton(
@@ -219,6 +226,111 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                         },
                         modifier = Modifier.weight(1f)
                     )
+                }
+
+                // Вывод результатов 5-шагового самотеста ✓ / ✗
+                if (selfTestItems.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .border(1.dp, tokens.accentColor.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Результат самопроверки острова:",
+                            color = tokens.accentColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        selfTestItems.forEach { item ->
+                            val iconSymbol = if (item.passed) "✓" else "✗"
+                            val itemColor = if (item.passed) tokens.accentColor else tokens.dangerColor
+                            Column {
+                                Text(
+                                    text = "$iconSymbol ${item.stepTitle}",
+                                    color = itemColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.5.sp
+                                )
+                                Text(
+                                    text = item.explanation,
+                                    color = tokens.textSecondary,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Кольцевой буфер последних 100 событий острова
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { showIslandLogExpanded = !showIslandLogExpanded },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Журнал событий острова (${islandLogs.size} / 100)",
+                        color = tokens.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                    Icon(
+                        imageVector = if (showIslandLogExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = "Раскрыть журнал острова",
+                        tint = tokens.accentColor
+                    )
+                }
+
+                AnimatedVisibility(visible = showIslandLogExpanded) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.Black.copy(alpha = 0.50f))
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = if (islandLogs.isEmpty()) "Событий пока нет. Нажмите «Самотест острова» или включите усиление."
+                                else islandLogs.take(25).joinToString("\n") { e ->
+                                    "${e.formattedTime} ${if (e.isSuccess) "✓" else "✗"} [#${e.seqId}] ${e.action} (${e.boostPercent}%, ${e.jsonSizeBytes}B): ${e.detail}"
+                                },
+                                color = Color(0xFFE2E8F0),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                lineHeight = 16.sp
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            GlassButton(
+                                text = "Скопировать журнал",
+                                icon = Icons.Default.ContentCopy,
+                                onClick = {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    cm.setPrimaryClip(ClipData.newPlainText("Island Log", IslandEventLogger.formatAsPlainText()))
+                                    Toast.makeText(context, "Журнал острова скопирован", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            GlassButton(
+                                text = "Очистить",
+                                icon = Icons.Default.DeleteSweep,
+                                isDanger = true,
+                                onClick = { IslandEventLogger.clear() },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -275,19 +387,20 @@ fun SystemScreen(viewModel: SettingsViewModel) {
             }
         }
 
-        // 7. Секция «Сигналы определения и системные свойства» (сворачиваемая)
+        // 7. Секция «Сигналы определения и системные свойства»
         SysSectionTitle("Сигналы детектора и свойства getprop")
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .clickable { showSignalsExpanded = !showSignalsExpanded },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Совпавших сигналов: ${profile.matchedSignals.size} • Пустых/закрытых свойств: ${profile.unreadableProperties.size}",
+                        text = "Совпавших сигналов: ${profile.matchedSignals.size} • Недоступных свойств: ${profile.unreadableProperties.size}",
                         color = tokens.textPrimary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
@@ -295,7 +408,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     )
                     Icon(
                         imageVector = if (showSignalsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
+                        contentDescription = "Раскрыть список свойств",
                         tint = tokens.accentColor
                     )
                 }
@@ -329,6 +442,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .clickable { showOverridePicker = !showOverridePicker },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -348,7 +462,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     }
                     Icon(
                         imageVector = if (showOverridePicker) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
+                        contentDescription = "Выбрать режим ОС",
                         tint = tokens.textSecondary
                     )
                 }

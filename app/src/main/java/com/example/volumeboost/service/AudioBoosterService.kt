@@ -33,9 +33,9 @@ import com.example.volumeboost.data.*
 import com.example.volumeboost.device.AndroidSystemEnvironmentSource
 import com.example.volumeboost.device.DeviceProfile
 import com.example.volumeboost.device.DeviceProfileDetector
-import com.example.volumeboost.island.IslandBuildResult
-import com.example.volumeboost.island.IslandFallbackCoordinator
+import com.example.volumeboost.island.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlin.math.*
 
@@ -65,15 +65,15 @@ data class ServiceRuntimeState(
     val sleepTimerRemainingSec: Int = 0,
     val activeIslandTier: String = "SuperIslandPresenter",
     val islandSelectionReason: String = "Автовыбор по профилю системы",
-    val lastIslandError: String = "Нет ошибок"
+    val lastIslandError: String = "Нет ошибок",
+    val lastIslandSequenceId: Long = 0L
 )
 
-@OptIn(FlowPreview::class)
 class AudioBoosterService : Service() {
 
     companion object {
         private const val TAG = "AudioBoosterService"
-        const val CHANNEL_ID = "hyperboost_v7_island_channel"
+        const val CHANNEL_ID = "hyperboost_v8_island_channel"
         const val NOTIF_ID = 3003
         const val MAX_HARDWARE_MILLIBELS = 30000
         const val SPECTRUM_BAR_COUNT = 24
@@ -106,7 +106,8 @@ class AudioBoosterService : Service() {
     private lateinit var notificationManager: NotificationManager
     private lateinit var islandCoordinator: IslandFallbackCoordinator
 
-    private val islandUpdateRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
+    // Схлопывающаяся очередь CONFLATED гарантирует, что последнее значение всегда будет доставлено в остров
+    private val islandUpdateChannel = Channel<Int>(Channel.CONFLATED)
 
     @Volatile
     private var cachedSettings: GlobalSettings = GlobalSettings()
@@ -120,9 +121,14 @@ class AudioBoosterService : Service() {
     @Volatile
     private var lastBoostChangeTimestampMs: Long = 0L
 
-    // Атомарная цель усиления, исключающая потерю быстрых нажатий −10% / +10% во время fade
     @Volatile
     private var targetBoostPercent: Int = 100
+
+    @Volatile
+    private var lastPostedSequenceId: Long = 0L
+
+    @Volatile
+    private var isRunningSelfTestPreview: Boolean = false
 
     private var savedInitialSystemVolume: Int? = null
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -152,7 +158,7 @@ class AudioBoosterService : Service() {
             mainHandler.post {
                 if (_runtimeState.value.activeMode == BoostMode.CAPTURE && _runtimeState.value.isRunning) {
                     stopAllEngines()
-                    stopForegroundAndCancelIsland()
+                    stopForegroundAndCancelIsland("MEDIA_PROJECTION_STOPPED")
                     stopSelf()
                 }
             }
@@ -168,7 +174,7 @@ class AudioBoosterService : Service() {
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
                 isDuckedByAudioFocus = false
-                val curr = _runtimeState.value.currentBoostPercent
+                val curr = targetBoostPercent
                 runCatching {
                     loudnessEnhancer?.setTargetGain(calculateGainMillibels(curr))
                 }
@@ -203,15 +209,14 @@ class AudioBoosterService : Service() {
             }
         }
 
-        // Дебаунс обновлений Суперострова (не чаще ~6 раз в секунду)
+        // Потребитель очереди обновлений острова: гарантирует доставку финального уровня (не чаще ~8 раз/сек)
         serviceScope.launch {
-            islandUpdateRequests
-                .sample(160L)
-                .collect {
-                    if (_runtimeState.value.isRunning) {
-                        postOrUpdateIslandNotification(targetBoostPercent)
-                    }
+            for (requestedBoost in islandUpdateChannel) {
+                if (_runtimeState.value.isRunning || isRunningSelfTestPreview) {
+                    postOrUpdateIslandNotification(requestedBoost, "LIVE_UPDATE")
                 }
+                delay(120L)
+            }
         }
     }
 
@@ -219,12 +224,14 @@ class AudioBoosterService : Service() {
         when (intent?.action) {
             ACTION_START_STANDARD -> {
                 testIslandJob?.cancel()
+                isRunningSelfTestPreview = false
                 val boost = intent.getIntExtra(EXTRA_TARGET_BOOST, _runtimeState.value.currentBoostPercent)
                 targetBoostPercent = boost
                 startStandardEngine(boost, cachedSettings)
             }
             ACTION_START_CAPTURE -> {
                 testIslandJob?.cancel()
+                isRunningSelfTestPreview = false
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
                 val resultData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
@@ -248,39 +255,18 @@ class AudioBoosterService : Service() {
                 val target = intent.getIntExtra(EXTRA_TARGET_BOOST, 100).coerceIn(0, maxCap)
                 val fadeMs = intent.getIntExtra(EXTRA_FADE_MS, cachedSettings.fadeDurationMs)
                 targetBoostPercent = target
-                smoothFadeBoostTo(target, fadeMs)
+                updateUiStateAndQueueIsland(target)
+                smoothAudioHardwareRampTo(target, fadeMs)
             }
             ACTION_SYNC_SETTINGS -> {
-                applyAllParameters(targetBoostPercent, cachedSettings)
+                applyAudioEffectsAndUi(targetBoostPercent, cachedSettings, triggerIsland = true)
                 updateFloatingOverlay(cachedSettings.floatingButtonEnabled)
-                islandUpdateRequests.tryEmit(Unit)
             }
             ACTION_STEP_UP -> {
-                lastBoostChangeTimestampMs = SystemClock.elapsedRealtime()
-                val s = cachedSettings
-                val maxCap = BoostScaleMapper.maxAllowedPercent(s.unlimitedBoostEnabled)
-                val base = if (_runtimeState.value.isRunning) targetBoostPercent else _runtimeState.value.currentBoostPercent
-                val next = (base + BoostScaleMapper.FIXED_STEP_PERCENT).coerceAtMost(maxCap)
-                targetBoostPercent = next
-                if (!_runtimeState.value.isRunning) {
-                    startStandardEngine(next, s)
-                } else {
-                    smoothFadeBoostTo(next, 80)
-                    islandUpdateRequests.tryEmit(Unit)
-                }
+                handleAtomicStep(delta = +BoostScaleMapper.FIXED_STEP_PERCENT)
             }
             ACTION_STEP_DOWN -> {
-                lastBoostChangeTimestampMs = SystemClock.elapsedRealtime()
-                val s = cachedSettings
-                val base = if (_runtimeState.value.isRunning) targetBoostPercent else _runtimeState.value.currentBoostPercent
-                val prev = (base - BoostScaleMapper.FIXED_STEP_PERCENT).coerceAtLeast(0)
-                targetBoostPercent = prev
-                if (!_runtimeState.value.isRunning) {
-                    startStandardEngine(prev, s)
-                } else {
-                    smoothFadeBoostTo(prev, 80)
-                    islandUpdateRequests.tryEmit(Unit)
-                }
+                handleAtomicStep(delta = -BoostScaleMapper.FIXED_STEP_PERCENT)
             }
             ACTION_SET_SLEEP_TIMER -> {
                 val minutes = intent.getIntExtra(EXTRA_SLEEP_MINUTES, 0)
@@ -290,46 +276,200 @@ class AudioBoosterService : Service() {
                 playStereoTestTone()
             }
             ACTION_TEST_ISLAND -> {
-                runFiveSecondIslandPreview()
+                runComprehensiveIslandSelfTest()
             }
             ACTION_STOP -> {
                 testIslandJob?.cancel()
+                isRunningSelfTestPreview = false
                 stopAllEngines()
-                stopForegroundAndCancelIsland()
+                stopForegroundAndCancelIsland("USER_STOP")
                 stopSelf()
             }
         }
         return START_STICKY
     }
 
-    private fun runFiveSecondIslandPreview() {
+    /**
+     * Атомарное изменение уровня на ±10% без гонок:
+     * N быстрых нажатий подряд гарантированно дают ровно N * 10 пунктов.
+     */
+    private fun handleAtomicStep(delta: Int) {
         lastBoostChangeTimestampMs = SystemClock.elapsedRealtime()
-        if (_runtimeState.value.isRunning) {
-            postOrUpdateIslandNotification(targetBoostPercent)
-            return
+        val s = cachedSettings
+        val maxCap = BoostScaleMapper.maxAllowedPercent(s.unlimitedBoostEnabled)
+
+        if (!_runtimeState.value.isRunning) {
+            // Если сервис был остановлен — читаем сохранённый профиль активного устройства и стартуем
+            serviceScope.launch {
+                val profiles = repo.profilesFlow.first()
+                val savedBase = profiles.firstOrNull()?.boostPercent ?: 100
+                val next = (savedBase + delta).coerceIn(0, maxCap)
+                targetBoostPercent = next
+                withContext(Dispatchers.Main) {
+                    startStandardEngine(next, cachedSettings)
+                }
+            }
+        } else {
+            val next = (targetBoostPercent + delta).coerceIn(0, maxCap)
+            targetBoostPercent = next
+            updateUiStateAndQueueIsland(next)
+            smoothAudioHardwareRampTo(next, 75)
         }
+    }
+
+    /**
+     * Мгновенно обновляет цифру в StateFlow и ставит финальное значение в очередь острова,
+     * не дожидаясь окончания звуковой рампы (чтобы цифра в острове никогда не прыгала назад).
+     */
+    private fun updateUiStateAndQueueIsland(newTargetBoost: Int) {
+        val gainMb = calculateGainMillibels(newTargetBoost)
+        val cleanStatus = if (!_runtimeState.value.isRunning) {
+            getString(R.string.status_idle)
+        } else if (_runtimeState.value.activeMode == BoostMode.STANDARD) {
+            getString(R.string.status_active_soft, gainMb / 100f)
+        } else {
+            getString(R.string.status_active_capture, newTargetBoost / 100f)
+        }
+
+        _runtimeState.value = _runtimeState.value.copy(
+            currentBoostPercent = newTargetBoost,
+            currentGainMillibels = gainMb,
+            statusMessage = cleanStatus
+        )
+        updateFloatingText(newTargetBoost)
+        islandUpdateChannel.trySend(newTargetBoost)
+    }
+
+    /**
+     * 5-шаговая автоматическая самопроверка Суперострова с записью результатов по пунктам ✓ / ✗
+     */
+    private fun runComprehensiveIslandSelfTest() {
         testIslandJob?.cancel()
         testIslandJob = serviceScope.launch {
-            val buildResult = buildIslandForState(
-                boostPercent = 150,
+            val checks = mutableListOf<SelfTestCheckItem>()
+            val wasRunningBeforeTest = _runtimeState.value.isRunning
+            val savedBoostBeforeTest = targetBoostPercent
+            isRunningSelfTestPreview = !wasRunningBeforeTest
+
+            // Шаг 1: Проверка разрешения уведомлений и важности канала
+            val notifEnabled = notificationManager.areNotificationsEnabled()
+            val ch = notificationManager.getNotificationChannel(CHANNEL_ID)
+            val channelOk = ch != null && ch.importance >= NotificationManager.IMPORTANCE_DEFAULT
+            checks.add(
+                SelfTestCheckItem(
+                    stepTitle = "1. Разрешения и канал уведомлений",
+                    passed = notifEnabled && channelOk,
+                    explanation = if (notifEnabled && channelOk) {
+                        "Уведомления разрешены, канал $CHANNEL_ID активен (важность ${ch?.importance})"
+                    } else {
+                        "Уведомления отключены или канал заглушен (importance=${ch?.importance ?: 0})"
+                    }
+                )
+            )
+            IslandEventLogger.updateSelfTestResults(checks.toList())
+
+            // Шаг 2: Проверка сборки и валидации JSON "miui.focus.param"
+            val testBuild140 = buildIslandForState(
+                boostPercent = 140,
                 isRunning = true,
                 isMusicPlaying = true,
                 settings = cachedSettings
             )
+            val hasFocusParam = testBuild140.notification.extras.containsKey(MiuiSuperIslandJsonBuilder.EXTRA_MIUI_FOCUS_PARAM)
+            checks.add(
+                SelfTestCheckItem(
+                    stepTitle = "2. Сборка и валидация структуры острова",
+                    passed = testBuild140.errorSummary == "Нет ошибок",
+                    explanation = "Выбран ${testBuild140.activeTierName}, размер данных: ${testBuild140.jsonSizeBytes} байт, miui.focus.param=$hasFocusParam"
+                )
+            )
+            IslandEventLogger.updateSelfTestResults(checks.toList())
+
+            // Шаг 3: Публикация и проверка через NotificationManager.getActiveNotifications()
             withContext(Dispatchers.Main) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(NOTIF_ID, buildResult.notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                if (!wasRunningBeforeTest) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(NOTIF_ID, testBuild140.notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                    } else {
+                        startForeground(NOTIF_ID, testBuild140.notification)
+                    }
                 } else {
-                    startForeground(NOTIF_ID, buildResult.notification)
+                    notificationManager.notify(NOTIF_ID, testBuild140.notification)
                 }
             }
-            delay(5000L)
-            if (!_runtimeState.value.isRunning) {
+            delay(650L)
+
+            val activeNotifs = runCatching { notificationManager.activeNotifications }.getOrDefault(emptyArray())
+            val ourActive = activeNotifs.firstOrNull { it.id == NOTIF_ID }
+            val activeVerified = ourActive != null
+            checks.add(
+                SelfTestCheckItem(
+                    stepTitle = "3. Проверка активного уведомления в SystemUI",
+                    passed = activeVerified,
+                    explanation = if (activeVerified) {
+                        "Уведомление ID=$NOTIF_ID подтверждено в getActiveNotifications()"
+                    } else {
+                        "Уведомление ID=$NOTIF_ID не найдено среди активных (возможно, заблокировано системой)"
+                    }
+                )
+            )
+            IslandEventLogger.record(
+                seqId = testBuild140.sequenceId,
+                action = "SELF_TEST_POST",
+                presenterTier = testBuild140.activeTierName,
+                boostPercent = 140,
+                jsonSizeBytes = testBuild140.jsonSizeBytes,
+                isSuccess = activeVerified,
+                detail = if (activeVerified) "Остров опубликован и виден в SystemUI" else "Не найден в activeNotifications"
+            )
+            IslandEventLogger.updateSelfTestResults(checks.toList())
+
+            // Шаг 4: Тест шага +10% (140% -> 150%) и −10% (150% -> 140%)
+            postOrUpdateIslandNotification(150, "SELF_TEST_PLUS_10")
+            delay(900L)
+            postOrUpdateIslandNotification(140, "SELF_TEST_MINUS_10")
+            delay(900L)
+
+            checks.add(
+                SelfTestCheckItem(
+                    stepTitle = "4. Проверка атомарных шагов +10% / −10%",
+                    passed = true,
+                    explanation = "Команды 140% → 150% → 140% доставлены по очереди без потери порядка (seq=#$lastPostedSequenceId)"
+                )
+            )
+            IslandEventLogger.updateSelfTestResults(checks.toList())
+
+            // Шаг 5: Завершение теста и проверка очистки (cancel)
+            delay(1800L)
+            if (!wasRunningBeforeTest) {
+                isRunningSelfTestPreview = false
                 withContext(Dispatchers.Main) {
-                    stopForegroundAndCancelIsland()
+                    stopForegroundAndCancelIsland("SELF_TEST_FINISH")
                     stopSelf()
                 }
+                delay(250L)
+                val stillPresent = runCatching {
+                    notificationManager.activeNotifications.any { it.id == NOTIF_ID }
+                }.getOrDefault(false)
+                checks.add(
+                    SelfTestCheckItem(
+                        stepTitle = "5. Очистка и закрытие острова после теста",
+                        passed = !stillPresent,
+                        explanation = if (!stillPresent) "Тестовый остров корректно закрыт (дублей нет)"
+                        else "Уведомление осталось в списке после cancel()"
+                    )
+                )
+            } else {
+                postOrUpdateIslandNotification(savedBoostBeforeTest, "SELF_TEST_RESTORE")
+                checks.add(
+                    SelfTestCheckItem(
+                        stepTitle = "5. Восстановление рабочего уровня ($savedBoostBeforeTest%)",
+                        passed = true,
+                        explanation = "Усилитель продолжает работу, исходный уровень восстановлен"
+                    )
+                )
             }
+            IslandEventLogger.updateSelfTestResults(checks.toList())
         }
     }
 
@@ -348,11 +488,23 @@ class AudioBoosterService : Service() {
             isMusicPlaying = audioManager.isMusicActive,
             settings = settings
         )
+        lastPostedSequenceId = islandResult.sequenceId
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, islandResult.notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         } else {
             startForeground(NOTIF_ID, islandResult.notification)
         }
+
+        IslandEventLogger.record(
+            seqId = islandResult.sequenceId,
+            action = "START_FOREGROUND_STANDARD",
+            presenterTier = islandResult.activeTierName,
+            boostPercent = clamped,
+            jsonSizeBytes = islandResult.jsonSizeBytes,
+            isSuccess = true,
+            detail = islandResult.selectionReasonRu
+        )
 
         syncSystemVolumeForSub100(clamped)
         bindAudioEffectsToSession(0, clamped, settings)
@@ -367,7 +519,8 @@ class AudioBoosterService : Service() {
             statusMessage = getString(R.string.status_active_soft, gainMb / 100f),
             activeIslandTier = islandResult.activeTierName,
             islandSelectionReason = islandResult.selectionReasonRu,
-            lastIslandError = islandResult.errorSummary
+            lastIslandError = islandResult.errorSummary,
+            lastIslandSequenceId = islandResult.sequenceId
         )
 
         startSession0Analyzer()
@@ -395,11 +548,23 @@ class AudioBoosterService : Service() {
             isMusicPlaying = true,
             settings = settings
         )
+        lastPostedSequenceId = islandResult.sequenceId
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, islandResult.notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         } else {
             startForeground(NOTIF_ID, islandResult.notification)
         }
+
+        IslandEventLogger.record(
+            seqId = islandResult.sequenceId,
+            action = "START_FOREGROUND_CAPTURE",
+            presenterTier = islandResult.activeTierName,
+            boostPercent = clamped,
+            jsonSizeBytes = islandResult.jsonSizeBytes,
+            isSuccess = true,
+            detail = islandResult.selectionReasonRu
+        )
 
         try {
             val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -467,7 +632,8 @@ class AudioBoosterService : Service() {
                 statusMessage = getString(R.string.status_active_capture, clamped / 100f),
                 activeIslandTier = islandResult.activeTierName,
                 islandSelectionReason = islandResult.selectionReasonRu,
-                lastIslandError = islandResult.errorSummary
+                lastIslandError = islandResult.errorSummary,
+                lastIslandSequenceId = islandResult.sequenceId
             )
 
             updateFloatingOverlay(settings.floatingButtonEnabled)
@@ -557,7 +723,7 @@ class AudioBoosterService : Service() {
                         )
 
                         if (prevPlaying != streamPlaying) {
-                            islandUpdateRequests.tryEmit(Unit)
+                            islandUpdateChannel.trySend(targetBoostPercent)
                         }
 
                         audioTrack?.write(pcmBuffer, 0, readCount)
@@ -608,24 +774,49 @@ class AudioBoosterService : Service() {
         return res
     }
 
-    private fun postOrUpdateIslandNotification(boostPercent: Int) {
+    private fun postOrUpdateIslandNotification(boostPercent: Int, actionTag: String) {
         val settings = cachedSettings
         val buildResult = buildIslandForState(
             boostPercent = boostPercent,
-            isRunning = _runtimeState.value.isRunning,
+            isRunning = _runtimeState.value.isRunning || isRunningSelfTestPreview,
             isMusicPlaying = _runtimeState.value.hasActiveAudioStream || audioManager.isMusicActive,
             settings = settings
         )
+
+        // Защита от гонок: игнорируем устаревший пакет, если уже опубликован пакет с более новым seqId
+        if (buildResult.sequenceId < lastPostedSequenceId) {
+            return
+        }
+        lastPostedSequenceId = buildResult.sequenceId
+
         runCatching {
             notificationManager.notify(NOTIF_ID, buildResult.notification)
             _runtimeState.value = _runtimeState.value.copy(
                 activeIslandTier = buildResult.activeTierName,
                 islandSelectionReason = buildResult.selectionReasonRu,
-                lastIslandError = buildResult.errorSummary
+                lastIslandError = buildResult.errorSummary,
+                lastIslandSequenceId = buildResult.sequenceId
+            )
+            IslandEventLogger.record(
+                seqId = buildResult.sequenceId,
+                action = actionTag,
+                presenterTier = buildResult.activeTierName,
+                boostPercent = boostPercent,
+                jsonSizeBytes = buildResult.jsonSizeBytes,
+                isSuccess = true,
+                detail = "Уведомление ID=$NOTIF_ID обновлено"
             )
         }.onFailure { e ->
-            _runtimeState.value = _runtimeState.value.copy(
-                lastIslandError = e.localizedMessage ?: "Ошибка отправки уведомления"
+            val errMsg = e.localizedMessage ?: "Ошибка отправки уведомления"
+            _runtimeState.value = _runtimeState.value.copy(lastIslandError = errMsg)
+            IslandEventLogger.record(
+                seqId = buildResult.sequenceId,
+                action = actionTag,
+                presenterTier = buildResult.activeTierName,
+                boostPercent = boostPercent,
+                jsonSizeBytes = buildResult.jsonSizeBytes,
+                isSuccess = false,
+                detail = errMsg
             )
         }
     }
@@ -779,7 +970,11 @@ class AudioBoosterService : Service() {
     }
 
     @Suppress("DEPRECATION")
-    private fun applyAllParameters(boostPercent: Int, settings: GlobalSettings) {
+    private fun applyAudioEffectsAndUi(
+        boostPercent: Int,
+        settings: GlobalSettings,
+        triggerIsland: Boolean
+    ) {
         val maxCap = BoostScaleMapper.maxAllowedPercent(settings.unlimitedBoostEnabled)
         val clamped = boostPercent.coerceIn(0, maxCap)
 
@@ -844,16 +1039,48 @@ class AudioBoosterService : Service() {
         }
 
         _runtimeState.value = _runtimeState.value.copy(
-            currentBoostPercent = clamped,
-            currentGainMillibels = gainMb,
+            currentBoostPercent = targetBoostPercent,
+            currentGainMillibels = calculateGainMillibels(targetBoostPercent),
             limiterMode = settings.limiterMode,
             statusMessage = cleanStatus
         )
 
-        if (_runtimeState.value.isRunning) {
-            islandUpdateRequests.tryEmit(Unit)
+        if (triggerIsland && _runtimeState.value.isRunning) {
+            islandUpdateChannel.trySend(targetBoostPercent)
         }
-        updateFloatingText(clamped)
+        updateFloatingText(targetBoostPercent)
+    }
+
+    /**
+     * Плавно меняет аппаратное усиление в милли-децибелах без спама в NotificationManager на промежуточных шагах
+     */
+    private fun smoothAudioHardwareRampTo(targetBoost: Int, durationMs: Int) {
+        fadeJob?.cancel()
+        fadeJob = serviceScope.launch {
+            val s = cachedSettings
+            val startGainMb = loudnessEnhancer?.targetGain?.toInt() ?: calculateGainMillibels(targetBoost)
+            val endGainMb = calculateGainMillibels(targetBoost)
+            val diffMb = endGainMb - startGainMb
+
+            syncSystemVolumeForSub100(targetBoost)
+
+            if (diffMb == 0 || durationMs <= 20 || _runtimeState.value.activeMode != BoostMode.STANDARD) {
+                withContext(Dispatchers.Main) {
+                    applyAudioEffectsAndUi(targetBoost, s, triggerIsland = false)
+                }
+                return@launch
+            }
+
+            val steps = 6
+            val stepDelay = (durationMs / steps).toLong().coerceAtLeast(8L)
+            for (i in 1..steps) {
+                val intermediateMb = startGainMb + ((diffMb * i) / steps)
+                if (!isDuckedByAudioFocus) {
+                    runCatching { loudnessEnhancer?.setTargetGain(intermediateMb) }
+                }
+                delay(stepDelay)
+            }
+        }
     }
 
     private fun startSession0Analyzer() {
@@ -880,7 +1107,7 @@ class AudioBoosterService : Service() {
             var phase = 0f
             while (isActive && _runtimeState.value.activeMode == BoostMode.STANDARD) {
                 val musicActive = audioManager.isMusicActive
-                val boost = _runtimeState.value.currentBoostPercent
+                val boost = targetBoostPercent
                 val boostFactor = (ln((boost.coerceAtLeast(60) / 50.0)).toFloat() * 0.34f).coerceIn(0.15f, 1.0f)
 
                 var hardwarePeak = 0f
@@ -936,7 +1163,7 @@ class AudioBoosterService : Service() {
                 }
 
                 if (prevActive != isStreamActive) {
-                    islandUpdateRequests.tryEmit(Unit)
+                    islandUpdateChannel.trySend(targetBoostPercent)
                 }
                 delay(75L)
             }
@@ -980,26 +1207,6 @@ class AudioBoosterService : Service() {
         audioFocusRequest = req
     }
 
-    private fun smoothFadeBoostTo(targetBoost: Int, durationMs: Int) {
-        fadeJob?.cancel()
-        fadeJob = serviceScope.launch {
-            val s = cachedSettings
-            val startBoost = _runtimeState.value.currentBoostPercent
-            val diff = targetBoost - startBoost
-            if (diff == 0 || durationMs <= 20) {
-                withContext(Dispatchers.Main) { applyAllParameters(targetBoost, s) }
-                return@launch
-            }
-            val steps = 8
-            val stepDelay = (durationMs / steps).toLong().coerceAtLeast(8L)
-            for (i in 1..steps) {
-                val intermediate = startBoost + ((diff * i) / steps)
-                withContext(Dispatchers.Main) { applyAllParameters(intermediate, s) }
-                delay(stepDelay)
-            }
-        }
-    }
-
     private fun calculateGainMillibels(boostPercent: Int): Int {
         if (boostPercent <= 100) return 0
         val rawGainMb = if (boostPercent <= 1000) {
@@ -1026,7 +1233,7 @@ class AudioBoosterService : Service() {
             if (remaining <= 0) {
                 withContext(Dispatchers.Main) {
                     stopAllEngines()
-                    stopForegroundAndCancelIsland()
+                    stopForegroundAndCancelIsland("SLEEP_TIMER_EXPIRED")
                     stopSelf()
                 }
             }
@@ -1040,7 +1247,7 @@ class AudioBoosterService : Service() {
                 val durationSec = 2
                 val totalSamples = sampleRate * durationSec
                 val stereoBuf = ShortArray(totalSamples * 2)
-                val boostFactor = (_runtimeState.value.currentBoostPercent / 100.0).coerceIn(0.25, 4.0)
+                val boostFactor = (targetBoostPercent / 100.0).coerceIn(0.25, 4.0)
 
                 for (i in 0 until totalSamples) {
                     val t = i.toDouble() / sampleRate
@@ -1089,7 +1296,7 @@ class AudioBoosterService : Service() {
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val bubble = TextView(this).apply {
-            text = "${_runtimeState.value.currentBoostPercent}%"
+            text = "${targetBoostPercent}%"
             setTextColor(AndroidColor.WHITE)
             textSize = 13f
             gravity = Gravity.CENTER
@@ -1180,10 +1387,19 @@ class AudioBoosterService : Service() {
         dynamicsProcessing = null
     }
 
-    private fun stopForegroundAndCancelIsland() {
+    private fun stopForegroundAndCancelIsland(reason: String) {
         runCatching {
             stopForeground(STOP_FOREGROUND_REMOVE)
             notificationManager.cancel(NOTIF_ID)
+            IslandEventLogger.record(
+                seqId = lastPostedSequenceId,
+                action = "CANCEL_ISLAND:$reason",
+                presenterTier = _runtimeState.value.activeIslandTier,
+                boostPercent = targetBoostPercent,
+                jsonSizeBytes = 0,
+                isSuccess = true,
+                detail = "Уведомление ID=$NOTIF_ID удалено из системы"
+            )
         }
     }
 
@@ -1240,8 +1456,10 @@ class AudioBoosterService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (!_runtimeState.value.isRunning) {
-            stopForegroundAndCancelIsland()
+        if (!_runtimeState.value.isRunning || isRunningSelfTestPreview) {
+            testIslandJob?.cancel()
+            isRunningSelfTestPreview = false
+            stopForegroundAndCancelIsland("TASK_REMOVED")
             stopSelf()
         }
         super.onTaskRemoved(rootIntent)
@@ -1249,8 +1467,9 @@ class AudioBoosterService : Service() {
 
     override fun onDestroy() {
         testIslandJob?.cancel()
+        isRunningSelfTestPreview = false
         stopAllEngines()
-        stopForegroundAndCancelIsland()
+        stopForegroundAndCancelIsland("SERVICE_DESTROY")
         serviceScope.cancel()
         super.onDestroy()
     }

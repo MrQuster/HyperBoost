@@ -90,6 +90,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
         detectAndApplyDeviceProfile(fromHardwareCallback = false)
 
+        // Синхронизируем ползунок и профиль устройства при нажатии −10% / +10% из Суперострова или виджета
+        viewModelScope.launch {
+            runtimeState.collect { rt ->
+                if (rt.isRunning && _boostPercent.value != rt.currentBoostPercent) {
+                    _boostPercent.value = rt.currentBoostPercent
+                    persistBoostEvents.tryEmit(rt.currentBoostPercent)
+                }
+            }
+        }
+
         viewModelScope.launch {
             persistBoostEvents
                 .debounce(250L)

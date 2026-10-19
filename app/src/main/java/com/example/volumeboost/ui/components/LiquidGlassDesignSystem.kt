@@ -950,3 +950,30 @@ fun GlassDialog(
         }
     }
 }
+
+@Composable
+fun GlassSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val tokens = LocalGlassTokens.current
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(tokens.spacingSmall)
+    ) {
+        Text(
+            text = title,
+            color = tokens.accentColor,
+            fontSize = tokens.sectionHeaderSize,
+            fontWeight = FontWeight.ExtraBold
+        )
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacingMedium),
+                content = content
+            )
+        }
+    }
+}
