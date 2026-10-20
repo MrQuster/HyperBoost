@@ -39,6 +39,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.volumeboost.ui.theme.LocalGlassTokens
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.*
@@ -79,6 +83,7 @@ fun GlassLensTabBar(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
     freeLensDragEnabled: Boolean = false,
     refractionStrength: Float = 0.65f,
     borderStrokeWidth: Dp = 1.4.dp
@@ -123,20 +128,36 @@ fun GlassLensTabBar(
         } else null
     }
 
-    // Внешний контейнер с защитным градиентным затемнением (Scrim) снизу,
-    // чтобы карточки при прокрутке никогда не читались сквозь панель и под ней
+    // Полупрозрачная тонировка стекла (35..55%), управляемая ползунком «Прозрачность стекла» в настройках
+    val barShape = RoundedCornerShape(32.dp)
+    val supportsHardwareBackdropBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !tokens.powerSaveMode &&
+            hazeState != null
+    val translucentAlpha = (tokens.glassSurfaceAlpha * 2.4f).coerceIn(0.35f, 0.56f)
+
+    val glassTintColor = when {
+        tokens.isAmoled -> Color(0xFF04060D).copy(alpha = if (supportsHardwareBackdropBlur) translucentAlpha else 0.82f)
+        tokens.isDark -> Color(0xFF0A1124).copy(alpha = if (supportsHardwareBackdropBlur) translucentAlpha else 0.80f)
+        else -> Color(0xFFF1F5F9).copy(alpha = if (supportsHardwareBackdropBlur) (translucentAlpha + 0.18f) else 0.88f)
+    }
+
+    val backdropModifier = if (supportsHardwareBackdropBlur && hazeState != null) {
+        Modifier.hazeChild(
+            state = hazeState,
+            style = HazeDefaults.style(
+                backgroundColor = tokens.baseBackground,
+                tint = HazeTint(color = glassTintColor),
+                blurRadius = tokens.blurRadius.coerceIn(20.dp, 48.dp),
+                noiseFactor = 0.03f
+            )
+        )
+    } else {
+        Modifier.background(glassTintColor)
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        tokens.baseBackground.copy(alpha = 0.85f),
-                        tokens.baseBackground
-                    )
-                )
-            )
             .windowInsetsPadding(WindowInsets.systemGestures.only(WindowInsetsSides.Horizontal))
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
@@ -144,19 +165,33 @@ fun GlassLensTabBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
-                .shadow(22.dp, RoundedCornerShape(32.dp))
-                .clip(RoundedCornerShape(32.dp))
-                .background(if (tokens.isDark) Color(0xF5070B14) else Color(0xF7F1F5F9))
+                .shadow(
+                    elevation = if (tokens.powerSaveMode) 8.dp else 18.dp,
+                    shape = barShape,
+                    ambientColor = tokens.accentColor.copy(alpha = 0.22f),
+                    spotColor = Color.Black.copy(alpha = 0.45f)
+                )
+                .clip(barShape)
+                .then(backdropModifier)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = if (tokens.isDark) 0.14f else 0.45f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = if (tokens.isDark) 0.18f else 0.04f)
+                        )
+                    )
+                )
                 .border(
                     width = 1.2.dp,
                     brush = Brush.linearGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.55f),
-                            tokens.accentColor.copy(alpha = 0.35f),
+                            Color.White.copy(alpha = 0.65f),
+                            tokens.accentColor.copy(alpha = 0.38f),
                             Color.White.copy(alpha = 0.14f)
                         )
                     ),
-                    shape = RoundedCornerShape(32.dp)
+                    shape = barShape
                 )
         ) {
             val barWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
@@ -295,7 +330,6 @@ fun GlassLensTabBar(
                         }
                     }
             ) {
-                // Слой иконок и подписей
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
@@ -359,7 +393,6 @@ fun GlassLensTabBar(
                     }
                 }
 
-                // Слой линзы, строго центрированный по вертикали и зажатый внутри границ панели
                 val lensWidthDp = with(density) { lensWidthPx.toDp() }
                 val lensHeightDp = with(density) { lensHeightPx.toDp() }
 
@@ -387,8 +420,8 @@ fun GlassLensTabBar(
                     drawRoundRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                tokens.accentColor.copy(alpha = if (isDraggingLens) 0.36f else 0.24f),
-                                tokens.secondaryAccent.copy(alpha = 0.10f),
+                                tokens.accentColor.copy(alpha = if (isDraggingLens) 0.38f else 0.26f),
+                                tokens.secondaryAccent.copy(alpha = 0.12f),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.5f + px * 0.4f, size.height * 0.5f),
@@ -397,11 +430,11 @@ fun GlassLensTabBar(
                         cornerRadius = corner
                     )
 
-                    val bodyAlpha = if (isDraggingLens) 0.18f else 0.22f
+                    val bodyAlpha = if (isDraggingLens) 0.22f else 0.26f
                     drawRoundRect(
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = bodyAlpha + 0.10f),
+                                Color.White.copy(alpha = bodyAlpha + 0.12f),
                                 tokens.accentColor.copy(alpha = bodyAlpha * 0.65f),
                                 Color.White.copy(alpha = bodyAlpha * 0.30f)
                             )
@@ -414,7 +447,7 @@ fun GlassLensTabBar(
                             colors = listOf(
                                 Color.White.copy(alpha = 0.95f),
                                 tokens.accentColor.copy(alpha = 0.85f),
-                                Color.White.copy(alpha = 0.25f)
+                                Color.White.copy(alpha = 0.28f)
                             )
                         ),
                         cornerRadius = corner,

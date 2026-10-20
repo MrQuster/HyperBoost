@@ -50,7 +50,8 @@ fun SystemScreen(viewModel: SettingsViewModel) {
     val islandLogs by IslandEventLogger.entriesFlow.collectAsState()
     val selfTestItems by IslandEventLogger.selfTestResults.collectAsState()
 
-    val isEn = settings.languageCode == "en"
+    val isEn = !com.example.volumeboost.util.LocaleHelper.isRussianActive(context, settings.languageCode)
+    val isRu = !isEn
     val plan = remember(profile, settings.islandRoutingPreference, settings.powerSaveGlass) {
         FeatureRegistry.resolvePlan(profile, settings.islandRoutingPreference, settings.powerSaveGlass)
     }
@@ -175,19 +176,74 @@ fun SystemScreen(viewModel: SettingsViewModel) {
             }
         }
 
-        // 4. Секция «Аудио тракт»
-        SysSectionTitle("Аудиоподсистема и HAL")
+        // 4. Секция «Аудио тракт, маршруты ползунков и самотест эффектов»
+        SysSectionTitle(androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_sec_audio))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             val hw = profile.hardwareSpecs
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                KeyValueRow("Выбранный движок", plan.primaryAudioStrategy.titleRu)
-                KeyValueRow("Активные эффекты", runtime.supportedEffectsSummary)
-                KeyValueRow("Нативная частота и буфер", "${hw.nativeSampleRateHz} Гц • ${hw.framesPerBuffer} фреймов/буфер")
+            val bassRouteName = if (isEn) runtime.activeBassRoute.labelEn else runtime.activeBassRoute.labelRu
+            val virtRouteName = if (isEn) runtime.activeVirtualizerRoute.labelEn else runtime.activeVirtualizerRoute.labelRu
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 KeyValueRow(
-                    "Флаги задержки",
-                    "Low Latency: ${if (hw.hasLowLatencyAudio) "Да" else "Нет"} • Pro Audio: ${if (hw.hasProAudio) "Да" else "Нет"}"
+                    androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_audio_engine),
+                    if (isEn) plan.primaryAudioStrategy.titleEn else plan.primaryAudioStrategy.titleRu
                 )
-                KeyValueRow("Активные аудиовыходы", hw.connectedOutputSummary)
+                KeyValueRow(
+                    androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_audio_effects),
+                    runtime.supportedEffectsSummary
+                )
+                KeyValueRow(
+                    androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_audio_routes),
+                    "Bass: $bassRouteName • Surround: $virtRouteName"
+                )
+                KeyValueRow(
+                    androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_audio_hal),
+                    "${hw.nativeSampleRateHz} Hz • ${hw.framesPerBuffer} frames/buffer"
+                )
+                KeyValueRow(
+                    androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_audio_outputs),
+                    hw.connectedOutputSummary
+                )
+
+                GlassButton(
+                    text = androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_btn_test_effects),
+                    icon = Icons.Default.GraphicEq,
+                    isAccent = true,
+                    onClick = { viewModel.triggerAudioEffectsTest() },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (runtime.audioEffectTestResults.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.Black.copy(alpha = 0.42f))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(com.example.volumeboost.R.string.sys_effects_test_header),
+                            color = tokens.accentColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        runtime.audioEffectTestResults.forEach { item ->
+                            val sym = if (item.passed) "✓" else "✗"
+                            val col = if (item.passed) tokens.accentColor else tokens.dangerColor
+                            Text(
+                                text = "$sym ${item.effectName}",
+                                color = col,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.5.sp
+                            )
+                            Text(
+                                text = if (isEn) item.detailEn else item.detailRu,
+                                color = tokens.textSecondary,
+                                fontSize = 11.5.sp
+                            )
+                        }
+                    }
+                }
             }
         }
 

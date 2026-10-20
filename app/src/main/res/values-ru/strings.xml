@@ -1,0 +1,270 @@
+<resources>
+    <string name="app_name">HyperBoost</string>
+    <string name="subtitle_engine">Аудиодвижок Liquid Glass</string>
+    <string name="tile_label">Усилитель</string>
+    <string name="widget_name">HyperBoost Виджет</string>
+
+    <!-- Навигация -->
+    <string name="nav_home">Главная</string>
+    <string name="nav_eq">Эквалайзер</string>
+    <string name="nav_devices">Устройства</string>
+    <string name="nav_settings">Настройки</string>
+    <string name="nav_system">Система</string>
+
+    <!-- Ярлыки -->
+    <string name="shortcut_on_short">Включить</string>
+    <string name="shortcut_on_long">Включить усиление звука</string>
+    <string name="shortcut_plus10_short">+10% буст</string>
+    <string name="shortcut_plus10_long">Увеличить усиление на +10%</string>
+    <string name="shortcut_off_short">Выключить</string>
+    <string name="shortcut_off_long">Отключить усилитель звука</string>
+
+    <!-- Единицы измерения и общие кнопки -->
+    <string name="action_ok">ОК</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_apply">Применить</string>
+    <string name="action_copy">Скопировать</string>
+    <string name="action_clear">Очистить</string>
+    <string name="action_rescan">Пересканировать</string>
+    <string name="unit_db">%1$s дБ</string>
+    <string name="unit_ms">%1$d мс</string>
+    <string name="unit_hz">%1$d Гц</string>
+    <string name="unit_khz">%1$d кГц</string>
+    <string name="yes">Да</string>
+    <string name="no">Нет</string>
+    <string name="unknown">Неизвестно</string>
+
+    <!-- Главная и Круговой регулятор -->
+    <string name="dial_status_on">АКТИВЕН • СТОП</string>
+    <string name="dial_status_off">ВЫКЛ • СТАРТ</string>
+    <string name="status_idle">Усилитель в режиме ожидания</string>
+    <string name="status_active_soft_fmt">Системный тракт • %1$sx (+%2$s дБ)</string>
+    <string name="status_active_capture_fmt">Прямой захват DSP • %1$sx (+%2$s дБ)</string>
+    <string name="signal_meter">Уровень сигнала и пиков</string>
+    <string name="signal_no_audio">Нет сигнала (включите воспроизведение музыки)</string>
+    <string name="peak_fmt" formatted="false">Пик: %1$d%%</string>
+    <string name="rms_fmt" formatted="false">RMS мощность: %1$d%%</string>
+    <string name="limiter_active_badge">ЛИМИТЕР АКТИВЕН</string>
+    <string name="limiter_idle_badge">Прямой тракт</string>
+    <string name="mode_soft_title">Мягкий режим (Системный Session 0)</string>
+    <string name="mode_soft_desc">Нулевая задержка LoudnessEnhancer + DynamicsProcessing</string>
+    <string name="mode_capture_title">Захват звука (PCM DSP)</string>
+    <string name="mode_capture_desc">Перехват MediaProjection + Biquad Бас и Mid/Side сцена</string>
+    <string name="drm_warning">Текущее приложение запрещает захват звука (DRM) или стоит на паузе.</string>
+    <string name="sleep_timer_title">Таймер автоотключения</string>
+    <string name="sleep_timer_off">Выкл</string>
+    <string name="timer_15m">15м</string>
+    <string name="timer_30m">30м</string>
+    <string name="timer_60m">60м</string>
+    <string name="timer_remaining_fmt">%1$d мин %2$d с</string>
+    <string name="test_sound_btn">Проверить стерео и усиление</string>
+
+    <!-- Эквалайзер и ползунки DSP -->
+    <string name="eq_title">Эквалайзер</string>
+    <string name="eq_subtitle">Многополосная коррекция, бас и сцена</string>
+    <string name="eq_reset">Сбросить</string>
+    <string name="eq_presets_header">Пресеты АЧХ</string>
+    <string name="eq_scroll_hint">Листайте пресеты ↔</string>
+    <string name="eq_save_custom">Сохранить пресет</string>
+    <string name="eq_delete_custom">Удалить</string>
+    <string name="eq_preset_name_hint">Название пресета</string>
+    <string name="eq_bass_boost">Усиление баса (Low-Shelf)</string>
+    <string name="eq_virtualizer">Объёмный звук (3D Стерео)</string>
+    <string name="eq_balance">Баланс Левый / Правый</string>
+    <string name="eq_pan_left_fmt">Лев %1$s</string>
+    <string name="eq_pan_right_fmt">Прав +%1$s</string>
+    <string name="eq_pan_center">Центр (0.0)</string>
+    <string name="eq_mono">Моно-режим (объединение каналов)</string>
+    <string name="eq_compressor">Порог DSP-лимитера</string>
+    <string name="eq_preset_flat">Ровный</string>
+    <string name="eq_preset_voice">Голос</string>
+    <string name="eq_preset_bass">Бас</string>
+    <string name="eq_preset_cinema">Кино</string>
+    <string name="eq_preset_music">Музыка</string>
+    <string name="eq_preset_night">Ночной режим</string>
+    <string name="eq_preset_treble">Чёткие высокие</string>
+    <string name="eq_preset_custom">Свой пресет</string>
+    <string name="dsp_route_active_fmt">Активный тракт DSP: %1$s</string>
+
+    <!-- Устройства -->
+    <string name="devices_title">Профили аудиоустройств</string>
+    <string name="devices_connected">Активный выход</string>
+    <string name="devices_saved">Сохранённые профили</string>
+    <string name="device_autostart">Автозапуск буста при подключении</string>
+    <string name="device_rename">Переименовать устройство</string>
+    <string name="device_name_hint">Имя устройства</string>
+    <string name="device_pin">Закрепить вверху</string>
+    <string name="device_delete">Удалить профиль</string>
+    <string name="dev_type_speaker">Динамик</string>
+    <string name="dev_type_bt">Bluetooth</string>
+    <string name="dev_type_usb">USB-ЦАП</string>
+    <string name="dev_type_wired">Проводные</string>
+    <string name="dev_boost_fmt" formatted="false">%1$s • Усиление: %2$d%%</string>
+    <string name="dev_dac_buffer_fmt">%1$s • %2$d кГц • Буфер ЦАП %3$s мс (%4$d фр.)</string>
+    <string name="bt_abs_vol_title">Подсказка: Абсолютная громкость Bluetooth</string>
+    <string name="bt_abs_vol_desc">Если на Bluetooth-наушниках усиление выше 100% ощущается слабо, откройте раздел «Для разработчиков» и включите тумблер «Отключить абсолютный уровень громкости».</string>
+    <string name="open_dev_options">Открыть «Для разработчиков»</string>
+
+    <!-- Настройки -->
+    <string name="sec_island">Суперостров (Hyper Island) и Уведомления</string>
+    <string name="sec_sound">Звук, шкала усиления и DSP</string>
+    <string name="sec_appearance">Внешний вид и Линза Liquid Glass</string>
+    <string name="sec_behavior">Поведение и уведомления</string>
+    <string name="sec_data">Резервное копирование и сброс</string>
+    <string name="sec_system_link">Система, Диагностика и Обновления</string>
+
+    <string name="island_enable_toggle">Показывать управление в Суперострове</string>
+    <string name="island_routing_label">Режим выбора острова / уведомления:</string>
+    <string name="island_style_label">Стиль компактного острова:</string>
+    <string name="island_color_label">Цветовая схема острова:</string>
+    <string name="island_only_playing">Показывать остров только при воспроизведении звука</string>
+    <string name="island_lockscreen_actions" formatted="false">Разрешить кнопки «−10% / +10%» на экране блокировки</string>
+    <string name="island_shizuku_toggle">Обход белого списка через Shizuku (опционально)</string>
+    <string name="island_test_btn">Проверить остров</string>
+    <string name="island_open_notif_btn">Настройки уведомлений</string>
+
+    <string name="island_route_auto">Авто (по системе)</string>
+    <string name="island_route_super">Xiaomi Super Island</string>
+    <string name="island_route_live">Android 16+ Live Update</string>
+    <string name="island_route_classic">Обычное уведомление</string>
+
+    <string name="island_style_compact">Компактный (иконка + %)</string>
+    <string name="island_style_icon">Только иконка (узкий)</string>
+    <string name="island_style_off">Выкл (обычное уведомление)</string>
+
+    <string name="island_color_dynamic">Динамический от уровня (Бирюза → Индиго → Золото)</string>
+    <string name="island_color_theme">Синхронно с темой приложения</string>
+    <string name="island_color_mint">Фиксированный Бирюзовый</string>
+    <string name="island_color_violet">Фиксированный Фиолетовый</string>
+    <string name="island_color_gold">Фиксированный Янтарь</string>
+
+    <string name="island_action_minus_10" formatted="false">−10%</string>
+    <string name="island_action_plus_10" formatted="false">+10%</string>
+    <string name="island_action_stop">Выкл</string>
+    <string name="island_action_start">Вкл</string>
+    <string name="island_title_fmt" formatted="false">Усиление: %1$d%%</string>
+    <string name="island_state_playing">ИГРАЕТ</string>
+    <string name="island_state_idle">ОЖИДАНИЕ</string>
+    <string name="island_state_off">ВЫКЛ</string>
+
+    <string name="sound_unlimited_toggle">Режим «Без ограничения» (шкала до 10 000% / +300 дБ)</string>
+    <string name="sound_manual_input_label">Ручной ввод точного уровня усиления (%):</string>
+    <string name="sound_limiter_mode_label">Опциональный DSP-лимитер:</string>
+    <string name="limiter_off">Выкл</string>
+    <string name="limiter_soft">Мягкий (tanh)</string>
+    <string name="limiter_hard">Жёсткий (Brickwall)</string>
+    <string name="sound_limiter_thresh">Порог срабатывания лимитера</string>
+    <string name="sound_limiter_attack">Время атаки лимитера</string>
+    <string name="sound_fade_duration">Плавность смены громкости (Fade)</string>
+
+    <string name="theme_label">Тема оформления:</string>
+    <string name="theme_dark">Тёмная</string>
+    <string name="theme_light">Светлая</string>
+    <string name="theme_amoled">AMOLED Чёрная</string>
+    <string name="theme_system">Системная</string>
+    <string name="lens_free_drag">Свободная линза (вытягивание капсулы из панели)</string>
+    <string name="lens_refraction">Преломление стеклянной линзы (AGSL)</string>
+    <string name="material_you_toggle">Динамические цвета обоев (Material You)</string>
+    <string name="blur_radius_label">Радиус размытия стекла и фона</string>
+    <string name="glass_density_label">Плотность тонировки стекла</string>
+    <string name="parallax_toggle">3D-параллакс и блики при наклоне телефона</string>
+    <string name="powersave_glass_toggle">Режим экономии заряда (упрощённое стекло)</string>
+    <string name="language_label">Язык приложения:</string>
+    <string name="lang_system">Как в системе</string>
+    <string name="lang_ru">Русский</string>
+    <string name="lang_en">English</string>
+
+    <string name="beh_autostart_bt">Автозапуск буста при подключении Bluetooth</string>
+    <string name="beh_start_boot">Запускать сервис при включении смартфона</string>
+    <string name="beh_compact_notif">Компактное уведомление в шторке</string>
+    <string name="beh_floating_btn">Плавающая кнопка поверх экрана (Overlay)</string>
+
+    <string name="btn_export_json">Экспорт JSON</string>
+    <string name="btn_import_json">Импорт JSON</string>
+    <string name="btn_reset_settings">Сбросить настройки</string>
+    <string name="btn_clear_profiles">Очистить профили</string>
+    <string name="confirm_reset_title">Сбросить все настройки?</string>
+    <string name="confirm_reset_msg">Все параметры звука, эквалайзера, острова и оформления вернутся к значениям по умолчанию.</string>
+    <string name="confirm_clear_profiles_title">Очистить профили устройств?</string>
+    <string name="confirm_clear_profiles_msg">Все сохранённые профили Bluetooth и проводных наушников будут удалены.</string>
+    <string name="btn_confirm_delete">Подтвердить</string>
+    <string name="toast_exported">Настройки экспортированы в JSON</string>
+    <string name="toast_imported_ok">Настройки восстановлены из JSON</string>
+    <string name="toast_imported_err">Ошибка чтения файла JSON</string>
+    <string name="toast_reset_done">Настройки сброшены по умолчанию</string>
+    <string name="toast_profiles_cleared">Профили устройств очищены</string>
+    <string name="toast_copied">Скопировано в буфер обмена</string>
+
+    <string name="sys_link_desc">Подробная информация о железе, самотест аудиоэффектов, матрица возможностей и журнал Суперострова находятся во вкладке «Система».</string>
+    <string name="btn_open_system_tab">Вкладка «Система»</string>
+    <string name="btn_github_releases">GitHub Releases</string>
+
+    <!-- Вкладка Система -->
+    <string name="sys_manufacturer_codename_fmt">Производитель: %1$s • Код: %2$s</string>
+    <string name="sys_confidence_fmt">Уверенность: %1$s</string>
+    <string name="sys_manual_badge">РУЧНОЙ РЕЖИМ</string>
+    <string name="sys_sec_os">Система и прошивка</string>
+    <string name="sys_sec_hw">Аппаратная платформа и дисплей</string>
+    <string name="sys_sec_audio">Аудиоподсистема, тракты DSP и самотест эффектов</string>
+    <string name="sys_sec_island">Суперостров: Самопроверка и Журнал событий</string>
+    <string name="sys_sec_caps_fmt">Матрица возможностей (%1$d активно)</string>
+    <string name="sys_sec_signals">Сигналы детектора и свойства getprop</string>
+    <string name="sys_sec_manage">Управление профилем и экспорт</string>
+
+    <string name="sys_os_family">Оболочка ОС</string>
+    <string name="sys_rom_region">Регион прошивки</string>
+    <string name="sys_android_ver">Версия Android</string>
+    <string name="sys_sec_patch">Патч безопасности</string>
+    <string name="sys_build_id">Номер сборки</string>
+    <string name="sys_rom_integrity">Статус целостности ROM</string>
+    <string name="sys_rom_custom">Признаки кастомной AOSP прошивки</string>
+    <string name="sys_rom_stock">Штатная вендорная прошивка</string>
+
+    <string name="sys_soc">Процессор (SoC)</string>
+    <string name="sys_cpu_cores_fmt">%1$d ядер</string>
+    <string name="sys_ram">Оперативная память (ОЗУ)</string>
+    <string name="sys_ram_fmt">Свободно %1$d МБ из %2$d МБ</string>
+    <string name="sys_screen">Экран и плотность</string>
+    <string name="sys_refresh_hdr">Частота и HDR</string>
+    <string name="sys_form_factor">Форм-фактор</string>
+    <string name="sys_cutout">Вырез камеры (Cutout)</string>
+
+    <string name="sys_audio_engine">Выбранный движок</string>
+    <string name="sys_audio_effects">Активные эффекты</string>
+    <string name="sys_audio_routes">Тракты ползунков (Бас / Объём / Баланс)</string>
+    <string name="sys_audio_hal">Нативная частота и буфер</string>
+    <string name="sys_audio_flags">Флаги задержки</string>
+    <string name="sys_audio_outputs">Активные аудиовыходы</string>
+    <string name="sys_btn_test_effects">Проверить эффекты</string>
+    <string name="sys_effects_test_header">Результат проверки аудиоэффектов:</string>
+
+    <string name="sys_island_strategy">Выбранная стратегия</string>
+    <string name="sys_island_presenter">Активный презентер</string>
+    <string name="sys_island_reason">Причина выбора</string>
+    <string name="sys_island_focus_status">Статус фокусных уведомлений</string>
+    <string name="sys_island_last_pkt">Последний пакет острова</string>
+    <string name="sys_btn_island_selftest">Самотест острова</string>
+    <string name="sys_island_selftest_header">Результат самопроверки острова:</string>
+    <string name="sys_island_log_title_fmt">Журнал событий острова (%1$d / 100)</string>
+    <string name="sys_island_log_empty">Событий пока нет. Нажмите «Самотест острова» или включите усиление.</string>
+    <string name="sys_signals_summary_fmt">Совпавших сигналов: %1$d • Недоступных свойств: %2$d</string>
+    <string name="sys_override_mode_label">Режим определения ОС</string>
+    <string name="sys_btn_copy_report">Скопировать отчёт</string>
+    <string name="sys_btn_share_json">Поделиться JSON профилем</string>
+
+    <!-- Онбординг -->
+    <string name="onb_title_1">Добро пожаловать в HyperBoost</string>
+    <string name="onb_desc_1">Усилитель громкости и многополосный эквалайзер в стиле Liquid Glass для Android-устройств.</string>
+    <string name="onb_title_2">Два звуковых движка и Biquad DSP</string>
+    <string name="onb_desc_2">Мягкий режим (Session 0) работает без задержки. Режим «Захват звука» перехватывает PCM-поток для работы биквадратного фильтра баса, расширения стереосцены и лимитера.</string>
+    <string name="onb_title_3">Профили устройств и Суперостров</string>
+    <string name="onb_desc_3" formatted="false">Автоматическое переключение профилей между динамиком, Bluetooth-наушниками и USB-ЦАП. Быстрое управление кнопками −10% / +10%.</string>
+    <string name="onb_title_4">Необходимые разрешения</string>
+    <string name="onb_desc_4">Разрешите уведомления (для шторки и острова), доступ к Bluetooth (для чтения модели наушников) и захват аудио (для спектра и PCM DSP).</string>
+    <string name="onb_step_fmt">Шаг %1$d из %2$d</string>
+    <string name="onb_back">Назад</string>
+    <string name="onb_next">Далее</string>
+    <string name="onb_start">Начать работу</string>
+
+    <string name="notif_channel_name">Суперостров и служба HyperBoost</string>
+</resources>

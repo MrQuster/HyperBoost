@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
@@ -33,7 +34,11 @@ import com.example.volumeboost.data.*
 import com.example.volumeboost.device.AndroidSystemEnvironmentSource
 import com.example.volumeboost.device.DeviceProfile
 import com.example.volumeboost.device.DeviceProfileDetector
+import com.example.volumeboost.dsp.AudioEffectTestResultItem
+import com.example.volumeboost.dsp.DspEffectRoute
+import com.example.volumeboost.dsp.SoftwarePcmDspProcessor
 import com.example.volumeboost.island.*
+import com.example.volumeboost.util.LocaleHelper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -58,14 +63,17 @@ data class ServiceRuntimeState(
     val peakSignal: Float = 0f,
     val rmsSignal: Float = 0f,
     val spectrumBands: List<Float> = List(24) { 0f },
-    val statusMessage: String = "Усилитель в режиме ожидания",
+    val statusMessage: String = "",
     val isCapturingSilenceOrDrm: Boolean = false,
     val eqBands: List<EqBandInfo> = emptyList(),
-    val supportedEffectsSummary: String = "LoudnessEnhancer, Equalizer, BassBoost, Virtualizer, DynamicsProcessing",
+    val supportedEffectsSummary: String = "LoudnessEnhancer, Equalizer, DynamicsProcessing, Biquad DSP",
+    val activeBassRoute: DspEffectRoute = DspEffectRoute.DYNAMICS_PROCESSING_STAGE,
+    val activeVirtualizerRoute: DspEffectRoute = DspEffectRoute.DYNAMICS_PROCESSING_STAGE,
+    val audioEffectTestResults: List<AudioEffectTestResultItem> = emptyList(),
     val sleepTimerRemainingSec: Int = 0,
     val activeIslandTier: String = "SuperIslandPresenter",
-    val islandSelectionReason: String = "Автовыбор по профилю системы",
-    val lastIslandError: String = "Нет ошибок",
+    val islandSelectionReason: String = "",
+    val lastIslandError: String = "OK",
     val lastIslandSequenceId: Long = 0L
 )
 
@@ -73,10 +81,12 @@ class AudioBoosterService : Service() {
 
     companion object {
         private const val TAG = "AudioBoosterService"
-        const val CHANNEL_ID = "hyperboost_v8_island_channel"
+        const val CHANNEL_ID = "hyperboost_v9_island_channel"
         const val NOTIF_ID = 3003
         const val MAX_HARDWARE_MILLIBELS = 30000
         const val SPECTRUM_BAR_COUNT = 24
+        private val EMPTY_SPECTRUM = List(SPECTRUM_BAR_COUNT) { 0f }
+        private val DP_PREEQ_CUTOFFS = floatArrayOf(90f, 220f, 600f, 1800f, 4800f, 16000f)
 
         const val ACTION_START_STANDARD = "ACTION_START_STANDARD"
         const val ACTION_START_CAPTURE = "ACTION_START_CAPTURE"
@@ -88,6 +98,7 @@ class AudioBoosterService : Service() {
         const val ACTION_SET_SLEEP_TIMER = "ACTION_SET_SLEEP_TIMER"
         const val ACTION_PLAY_STEREO_TEST = "ACTION_PLAY_STEREO_TEST"
         const val ACTION_TEST_ISLAND = "ACTION_TEST_ISLAND"
+        const val ACTION_TEST_AUDIO_EFFECTS = "ACTION_TEST_AUDIO_EFFECTS"
 
         const val EXTRA_TARGET_BOOST = "EXTRA_TARGET_BOOST"
         const val EXTRA_FADE_MS = "EXTRA_FADE_MS"
@@ -105,8 +116,8 @@ class AudioBoosterService : Service() {
     private lateinit var audioManager: AudioManager
     private lateinit var notificationManager: NotificationManager
     private lateinit var islandCoordinator: IslandFallbackCoordinator
+    private val softwareDsp = SoftwarePcmDspProcessor(48000)
 
-    // Схлопывающаяся очередь CONFLATED гарантирует, что последнее значение всегда будет доставлено в остров
     private val islandUpdateChannel = Channel<Int>(Channel.CONFLATED)
 
     @Volatile
@@ -153,6 +164,9 @@ class AudioBoosterService : Service() {
     private var windowManager: WindowManager? = null
     private var floatingView: View? = null
 
+    private fun localizedCtx(): Context =
+        LocaleHelper.getLocalizedContext(applicationContext, cachedSettings.languageCode)
+
     private val mediaProjectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             mainHandler.post {
@@ -196,6 +210,7 @@ class AudioBoosterService : Service() {
         serviceScope.launch {
             cachedDeviceProfile = DeviceProfileDetector.detect(AndroidSystemEnvironmentSource(applicationContext))
             repo.settingsFlow.collect { latest ->
+                val langChanged = cachedSettings.languageCode != latest.languageCode
                 cachedSettings = latest
                 val fromCache = DeviceProfile.fromJsonString(latest.cachedDeviceProfileJson)
                 cachedDeviceProfile = if (fromCache != null && latest.osOverrideOption.forcedFamily == null) {
@@ -206,10 +221,12 @@ class AudioBoosterService : Service() {
                         latest.osOverrideOption
                     )
                 }
+                if (langChanged && _runtimeState.value.isRunning) {
+                    islandUpdateChannel.trySend(targetBoostPercent)
+                }
             }
         }
 
-        // Потребитель очереди обновлений острова: гарантирует доставку финального уровня (не чаще ~8 раз/сек)
         serviceScope.launch {
             for (requestedBoost in islandUpdateChannel) {
                 if (_runtimeState.value.isRunning || isRunningSelfTestPreview) {
@@ -243,10 +260,6 @@ class AudioBoosterService : Service() {
                 targetBoostPercent = boost
                 if (resultCode == Activity.RESULT_OK && resultData != null) {
                     startCaptureEngine(resultCode, resultData, boost, cachedSettings)
-                } else {
-                    _runtimeState.value = _runtimeState.value.copy(
-                        statusMessage = getString(R.string.status_idle)
-                    )
                 }
             }
             ACTION_FADE_TO_BOOST -> {
@@ -259,8 +272,10 @@ class AudioBoosterService : Service() {
                 smoothAudioHardwareRampTo(target, fadeMs)
             }
             ACTION_SYNC_SETTINGS -> {
-                applyAudioEffectsAndUi(targetBoostPercent, cachedSettings, triggerIsland = true)
-                updateFloatingOverlay(cachedSettings.floatingButtonEnabled)
+                mainHandler.post {
+                    applyAudioEffectsAndUi(targetBoostPercent, cachedSettings, triggerIsland = true)
+                    updateFloatingOverlay(cachedSettings.floatingButtonEnabled)
+                }
             }
             ACTION_STEP_UP -> {
                 handleAtomicStep(delta = +BoostScaleMapper.FIXED_STEP_PERCENT)
@@ -278,6 +293,12 @@ class AudioBoosterService : Service() {
             ACTION_TEST_ISLAND -> {
                 runComprehensiveIslandSelfTest()
             }
+            ACTION_TEST_AUDIO_EFFECTS -> {
+                serviceScope.launch {
+                    val results = SoftwarePcmDspProcessor.runAudioEffectsSelfTest(_runtimeState.value.activeMode)
+                    _runtimeState.value = _runtimeState.value.copy(audioEffectTestResults = results)
+                }
+            }
             ACTION_STOP -> {
                 testIslandJob?.cancel()
                 isRunningSelfTestPreview = false
@@ -289,17 +310,12 @@ class AudioBoosterService : Service() {
         return START_STICKY
     }
 
-    /**
-     * Атомарное изменение уровня на ±10% без гонок:
-     * N быстрых нажатий подряд гарантированно дают ровно N * 10 пунктов.
-     */
     private fun handleAtomicStep(delta: Int) {
         lastBoostChangeTimestampMs = SystemClock.elapsedRealtime()
         val s = cachedSettings
         val maxCap = BoostScaleMapper.maxAllowedPercent(s.unlimitedBoostEnabled)
 
         if (!_runtimeState.value.isRunning) {
-            // Если сервис был остановлен — читаем сохранённый профиль активного устройства и стартуем
             serviceScope.launch {
                 val profiles = repo.profilesFlow.first()
                 val savedBase = profiles.firstOrNull()?.boostPercent ?: 100
@@ -317,32 +333,16 @@ class AudioBoosterService : Service() {
         }
     }
 
-    /**
-     * Мгновенно обновляет цифру в StateFlow и ставит финальное значение в очередь острова,
-     * не дожидаясь окончания звуковой рампы (чтобы цифра в острове никогда не прыгала назад).
-     */
     private fun updateUiStateAndQueueIsland(newTargetBoost: Int) {
         val gainMb = calculateGainMillibels(newTargetBoost)
-        val cleanStatus = if (!_runtimeState.value.isRunning) {
-            getString(R.string.status_idle)
-        } else if (_runtimeState.value.activeMode == BoostMode.STANDARD) {
-            getString(R.string.status_active_soft, gainMb / 100f)
-        } else {
-            getString(R.string.status_active_capture, newTargetBoost / 100f)
-        }
-
         _runtimeState.value = _runtimeState.value.copy(
             currentBoostPercent = newTargetBoost,
-            currentGainMillibels = gainMb,
-            statusMessage = cleanStatus
+            currentGainMillibels = gainMb
         )
         updateFloatingText(newTargetBoost)
         islandUpdateChannel.trySend(newTargetBoost)
     }
 
-    /**
-     * 5-шаговая автоматическая самопроверка Суперострова с записью результатов по пунктам ✓ / ✗
-     */
     private fun runComprehensiveIslandSelfTest() {
         testIslandJob?.cancel()
         testIslandJob = serviceScope.launch {
@@ -351,24 +351,22 @@ class AudioBoosterService : Service() {
             val savedBoostBeforeTest = targetBoostPercent
             isRunningSelfTestPreview = !wasRunningBeforeTest
 
-            // Шаг 1: Проверка разрешения уведомлений и важности канала
             val notifEnabled = notificationManager.areNotificationsEnabled()
             val ch = notificationManager.getNotificationChannel(CHANNEL_ID)
             val channelOk = ch != null && ch.importance >= NotificationManager.IMPORTANCE_DEFAULT
             checks.add(
                 SelfTestCheckItem(
-                    stepTitle = "1. Разрешения и канал уведомлений",
+                    stepTitle = "1. Notification Permission & Channel",
                     passed = notifEnabled && channelOk,
                     explanation = if (notifEnabled && channelOk) {
-                        "Уведомления разрешены, канал $CHANNEL_ID активен (важность ${ch?.importance})"
+                        "Enabled, channel importance=${ch?.importance}"
                     } else {
-                        "Уведомления отключены или канал заглушен (importance=${ch?.importance ?: 0})"
+                        "Disabled or muted (importance=${ch?.importance ?: 0})"
                     }
                 )
             )
             IslandEventLogger.updateSelfTestResults(checks.toList())
 
-            // Шаг 2: Проверка сборки и валидации JSON "miui.focus.param"
             val testBuild140 = buildIslandForState(
                 boostPercent = 140,
                 isRunning = true,
@@ -378,14 +376,13 @@ class AudioBoosterService : Service() {
             val hasFocusParam = testBuild140.notification.extras.containsKey(MiuiSuperIslandJsonBuilder.EXTRA_MIUI_FOCUS_PARAM)
             checks.add(
                 SelfTestCheckItem(
-                    stepTitle = "2. Сборка и валидация структуры острова",
-                    passed = testBuild140.errorSummary == "Нет ошибок",
-                    explanation = "Выбран ${testBuild140.activeTierName}, размер данных: ${testBuild140.jsonSizeBytes} байт, miui.focus.param=$hasFocusParam"
+                    stepTitle = "2. Build & Validate JSON",
+                    passed = testBuild140.errorSummary == "OK" || testBuild140.errorSummary == "Нет ошибок",
+                    explanation = "${testBuild140.activeTierName} (${testBuild140.jsonSizeBytes}B, miui.focus.param=$hasFocusParam)"
                 )
             )
             IslandEventLogger.updateSelfTestResults(checks.toList())
 
-            // Шаг 3: Публикация и проверка через NotificationManager.getActiveNotifications()
             withContext(Dispatchers.Main) {
                 if (!wasRunningBeforeTest) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -404,43 +401,29 @@ class AudioBoosterService : Service() {
             val activeVerified = ourActive != null
             checks.add(
                 SelfTestCheckItem(
-                    stepTitle = "3. Проверка активного уведомления в SystemUI",
+                    stepTitle = "3. Verify Active Notification in SystemUI",
                     passed = activeVerified,
-                    explanation = if (activeVerified) {
-                        "Уведомление ID=$NOTIF_ID подтверждено в getActiveNotifications()"
-                    } else {
-                        "Уведомление ID=$NOTIF_ID не найдено среди активных (возможно, заблокировано системой)"
-                    }
+                    explanation = if (activeVerified) "Notification ID=$NOTIF_ID active in SystemUI"
+                    else "Notification ID=$NOTIF_ID not found in activeNotifications"
                 )
-            )
-            IslandEventLogger.record(
-                seqId = testBuild140.sequenceId,
-                action = "SELF_TEST_POST",
-                presenterTier = testBuild140.activeTierName,
-                boostPercent = 140,
-                jsonSizeBytes = testBuild140.jsonSizeBytes,
-                isSuccess = activeVerified,
-                detail = if (activeVerified) "Остров опубликован и виден в SystemUI" else "Не найден в activeNotifications"
             )
             IslandEventLogger.updateSelfTestResults(checks.toList())
 
-            // Шаг 4: Тест шага +10% (140% -> 150%) и −10% (150% -> 140%)
             postOrUpdateIslandNotification(150, "SELF_TEST_PLUS_10")
-            delay(900L)
+            delay(850L)
             postOrUpdateIslandNotification(140, "SELF_TEST_MINUS_10")
-            delay(900L)
+            delay(850L)
 
             checks.add(
                 SelfTestCheckItem(
-                    stepTitle = "4. Проверка атомарных шагов +10% / −10%",
+                    stepTitle = "4. Atomic Step Sequence (+10% / −10%)",
                     passed = true,
-                    explanation = "Команды 140% → 150% → 140% доставлены по очереди без потери порядка (seq=#$lastPostedSequenceId)"
+                    explanation = "140% → 150% → 140% delivered in order (seq=#$lastPostedSequenceId)"
                 )
             )
             IslandEventLogger.updateSelfTestResults(checks.toList())
 
-            // Шаг 5: Завершение теста и проверка очистки (cancel)
-            delay(1800L)
+            delay(1600L)
             if (!wasRunningBeforeTest) {
                 isRunningSelfTestPreview = false
                 withContext(Dispatchers.Main) {
@@ -453,19 +436,18 @@ class AudioBoosterService : Service() {
                 }.getOrDefault(false)
                 checks.add(
                     SelfTestCheckItem(
-                        stepTitle = "5. Очистка и закрытие острова после теста",
+                        stepTitle = "5. Cancel & Cleanup",
                         passed = !stillPresent,
-                        explanation = if (!stillPresent) "Тестовый остров корректно закрыт (дублей нет)"
-                        else "Уведомление осталось в списке после cancel()"
+                        explanation = if (!stillPresent) "Test island cleanly removed" else "Still present after cancel()"
                     )
                 )
             } else {
                 postOrUpdateIslandNotification(savedBoostBeforeTest, "SELF_TEST_RESTORE")
                 checks.add(
                     SelfTestCheckItem(
-                        stepTitle = "5. Восстановление рабочего уровня ($savedBoostBeforeTest%)",
+                        stepTitle = "5. Restore Working Level ($savedBoostBeforeTest%)",
                         passed = true,
-                        explanation = "Усилитель продолжает работу, исходный уровень восстановлен"
+                        explanation = "Active booster restored"
                     )
                 )
             }
@@ -496,18 +478,8 @@ class AudioBoosterService : Service() {
             startForeground(NOTIF_ID, islandResult.notification)
         }
 
-        IslandEventLogger.record(
-            seqId = islandResult.sequenceId,
-            action = "START_FOREGROUND_STANDARD",
-            presenterTier = islandResult.activeTierName,
-            boostPercent = clamped,
-            jsonSizeBytes = islandResult.jsonSizeBytes,
-            isSuccess = true,
-            detail = islandResult.selectionReasonRu
-        )
-
         syncSystemVolumeForSub100(clamped)
-        bindAudioEffectsToSession(0, clamped, settings)
+        bindAudioEffectsToSession(0, clamped, settings, BoostMode.STANDARD)
         val gainMb = calculateGainMillibels(clamped)
 
         _runtimeState.value = _runtimeState.value.copy(
@@ -516,7 +488,6 @@ class AudioBoosterService : Service() {
             currentGainMillibels = gainMb,
             activeMode = BoostMode.STANDARD,
             limiterMode = settings.limiterMode,
-            statusMessage = getString(R.string.status_active_soft, gainMb / 100f),
             activeIslandTier = islandResult.activeTierName,
             islandSelectionReason = islandResult.selectionReasonRu,
             lastIslandError = islandResult.errorSummary,
@@ -555,16 +526,6 @@ class AudioBoosterService : Service() {
         } else {
             startForeground(NOTIF_ID, islandResult.notification)
         }
-
-        IslandEventLogger.record(
-            seqId = islandResult.sequenceId,
-            action = "START_FOREGROUND_CAPTURE",
-            presenterTier = islandResult.activeTierName,
-            boostPercent = clamped,
-            jsonSizeBytes = islandResult.jsonSizeBytes,
-            isSuccess = true,
-            detail = islandResult.selectionReasonRu
-        )
 
         try {
             val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -618,7 +579,7 @@ class AudioBoosterService : Service() {
                 .build()
 
             val sessionId = audioTrack!!.audioSessionId
-            bindAudioEffectsToSession(sessionId, 100, settings)
+            bindAudioEffectsToSession(sessionId, 100, settings, BoostMode.CAPTURE)
 
             audioRecord?.startRecording()
             audioTrack?.play()
@@ -629,7 +590,8 @@ class AudioBoosterService : Service() {
                 currentGainMillibels = calculateGainMillibels(clamped),
                 activeMode = BoostMode.CAPTURE,
                 limiterMode = settings.limiterMode,
-                statusMessage = getString(R.string.status_active_capture, clamped / 100f),
+                activeBassRoute = DspEffectRoute.SOFTWARE_BIQUAD_PCM,
+                activeVirtualizerRoute = DspEffectRoute.SOFTWARE_BIQUAD_PCM,
                 activeIslandTier = islandResult.activeTierName,
                 islandSelectionReason = islandResult.selectionReasonRu,
                 lastIslandError = islandResult.errorSummary,
@@ -655,6 +617,8 @@ class AudioBoosterService : Service() {
                         val leftBal = if (balance > 0.0) 1.0 - balance else 1.0
                         val rightBal = if (balance < 0.0) 1.0 + balance else 1.0
                         val isMono = s.monoEnabled
+                        val bassStrength = s.bassBoostStrength
+                        val virtStrength = s.virtualizerStrength
                         val limMode = s.limiterMode
                         val thresholdLinear = (32767.0 * 10.0.pow(s.limiterThresholdDb.toDouble() / 20.0))
                             .coerceIn(4000.0, 32760.0)
@@ -671,6 +635,18 @@ class AudioBoosterService : Service() {
 
                             var left = pcmBuffer[i].toDouble() * smoothedGain * leftBal
                             var right = pcmBuffer[i + 1].toDouble() * smoothedGain * rightBal
+
+                            // Программный 64-битный Biquad Low-Shelf фильтр баса + Mid/Side стереосцена
+                            if (bassStrength > 0 || virtStrength > 0) {
+                                val (dspL, dspR) = softwareDsp.processStereoSamplePair(
+                                    leftIn = left,
+                                    rightIn = right,
+                                    bassStrength0to1000 = bassStrength,
+                                    virtualizerStrength0to1000 = virtStrength
+                                )
+                                left = dspL
+                                right = dspR
+                            }
 
                             if (isMono) {
                                 val monoMix = (left + right) * 0.5
@@ -731,7 +707,7 @@ class AudioBoosterService : Service() {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Сбой режима захвата, переключаюсь на Session 0", e)
+            Log.e(TAG, "Capture mode fallback to Session 0", e)
             startStandardEngine(clamped, settings)
         }
     }
@@ -742,8 +718,13 @@ class AudioBoosterService : Service() {
         isMusicPlaying: Boolean,
         settings: GlobalSettings
     ): IslandBuildResult {
-        val (devName, devTag) = resolveCurrentOutputDeviceInfo()
-        val modeLabel = if (_runtimeState.value.activeMode == BoostMode.STANDARD) "Мягкий" else "Захват DSP"
+        val locCtx = localizedCtx()
+        val (devName, devTag) = resolveCurrentOutputDeviceInfo(locCtx)
+        val modeLabel = if (_runtimeState.value.activeMode == BoostMode.STANDARD) {
+            locCtx.getString(R.string.mode_soft_title).substringBefore(" ")
+        } else {
+            "DSP"
+        }
         val pulseActive = (SystemClock.elapsedRealtime() - lastBoostChangeTimestampMs) < 1600L
 
         val res = islandCoordinator.buildBestNotification(
@@ -783,7 +764,6 @@ class AudioBoosterService : Service() {
             settings = settings
         )
 
-        // Защита от гонок: игнорируем устаревший пакет, если уже опубликован пакет с более новым seqId
         if (buildResult.sequenceId < lastPostedSequenceId) {
             return
         }
@@ -804,10 +784,10 @@ class AudioBoosterService : Service() {
                 boostPercent = boostPercent,
                 jsonSizeBytes = buildResult.jsonSizeBytes,
                 isSuccess = true,
-                detail = "Уведомление ID=$NOTIF_ID обновлено"
+                detail = "ID=$NOTIF_ID updated"
             )
         }.onFailure { e ->
-            val errMsg = e.localizedMessage ?: "Ошибка отправки уведомления"
+            val errMsg = e.localizedMessage ?: "Notify error"
             _runtimeState.value = _runtimeState.value.copy(lastIslandError = errMsg)
             IslandEventLogger.record(
                 seqId = buildResult.sequenceId,
@@ -821,7 +801,7 @@ class AudioBoosterService : Service() {
         }
     }
 
-    private fun resolveCurrentOutputDeviceInfo(): Pair<String, String> {
+    private fun resolveCurrentOutputDeviceInfo(locCtx: Context): Pair<String, String> {
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         val bt = outputs.firstOrNull {
             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || it.type == AudioDeviceInfo.TYPE_BLE_HEADSET
@@ -833,10 +813,10 @@ class AudioBoosterService : Service() {
             it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
         }
         return when {
-            bt != null -> (bt.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth") to "Bluetooth"
-            usb != null -> (usb.productName?.toString()?.takeIf { it.isNotBlank() } ?: "USB-ЦАП") to "USB"
-            wired != null -> "Проводные наушники" to "AUX"
-            else -> cachedDeviceProfile.model.take(18) to "Динамик"
+            bt != null -> (bt.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth") to locCtx.getString(R.string.dev_type_bt)
+            usb != null -> (usb.productName?.toString()?.takeIf { it.isNotBlank() } ?: "USB DAC") to locCtx.getString(R.string.dev_type_usb)
+            wired != null -> locCtx.getString(R.string.dev_type_wired) to "AUX"
+            else -> cachedDeviceProfile.model.take(18) to locCtx.getString(R.string.dev_type_speaker)
         }
     }
 
@@ -860,7 +840,8 @@ class AudioBoosterService : Service() {
     private fun bindAudioEffectsToSession(
         sessionId: Int,
         boostPercent: Int,
-        settings: GlobalSettings
+        settings: GlobalSettings,
+        mode: BoostMode
     ) {
         releaseAudioEffects()
         val activeEffects = mutableListOf<String>()
@@ -896,76 +877,165 @@ class AudioBoosterService : Service() {
                     )
                 }
             }
-            activeEffects.add("Equalizer (${eqBandsList.size} полос)")
+            activeEffects.add("Equalizer (${eqBandsList.size})")
         }
 
+        var hwBassSupported = false
         runCatching {
-            bassBoost = BassBoost(0, sessionId).apply {
-                enabled = true
-                if (strengthSupported) setStrength(settings.bassBoostStrength.coerceIn(0, 1000).toShort())
+            val bb = BassBoost(0, sessionId)
+            if (bb.strengthSupported) {
+                bb.setStrength(settings.bassBoostStrength.coerceIn(0, 1000).toShort())
+                bb.enabled = settings.bassBoostStrength > 0
+                bassBoost = bb
+                hwBassSupported = true
+                activeEffects.add("BassBoost")
+            } else {
+                bb.release()
             }
-            activeEffects.add("BassBoost")
         }
 
+        var hwVirtSupported = false
         runCatching {
-            virtualizer = Virtualizer(0, sessionId).apply {
-                enabled = true
-                if (strengthSupported) setStrength(settings.virtualizerStrength.coerceIn(0, 1000).toShort())
+            val virt = Virtualizer(0, sessionId)
+            if (virt.strengthSupported) {
+                virt.setStrength(settings.virtualizerStrength.coerceIn(0, 1000).toShort())
+                virt.enabled = settings.virtualizerStrength > 0
+                virtualizer = virt
+                hwVirtSupported = true
+                activeEffects.add("Virtualizer")
+            } else {
+                virt.release()
             }
-            activeEffects.add("Virtualizer")
         }
 
+        // 6-полосный DynamicsProcessing (PreEQ + по-канальный баланс Л/П + Лимитер)
+        var dpAvailable = false
         runCatching {
             val config = DynamicsProcessing.Config.Builder(
                 DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                 2,
-                true, 1,
+                true, 6,
                 false, 0,
                 false, 0,
                 true
             ).build()
             dynamicsProcessing = DynamicsProcessing(0, sessionId, config).apply {
-                val extraInputGainDb = if (loudnessEnhancer == null && boostPercent > 100) {
-                    (20f * log10(boostPercent / 100f)).coerceIn(0f, 36f)
-                } else 0f
-                setInputGainAllChannelsTo(extraInputGainDb)
-
-                val limiterConfig = DynamicsProcessing.Limiter(
-                    true,
-                    settings.limiterMode != LimiterMode.OFF,
-                    0,
-                    settings.attackMs.toFloat().coerceAtLeast(1f),
-                    settings.releaseMs.toFloat().coerceAtLeast(10f),
-                    10f,
-                    settings.limiterThresholdDb,
-                    0f
-                )
-                setLimiterAllChannelsTo(limiterConfig)
-                enabled = settings.limiterMode != LimiterMode.OFF || extraInputGainDb > 0f
+                configureDynamicsProcessingStage(this, boostPercent, settings)
+                enabled = true
+                dpAvailable = enabled
             }
-            activeEffects.add("DynamicsProcessing")
+            if (dpAvailable) {
+                activeEffects.add("DynamicsProcessing (6-Band PreEQ)")
+            }
+        }
+
+        if (mode == BoostMode.CAPTURE) {
+            activeEffects.add("Biquad Low-Shelf & Mid/Side DSP")
+        }
+
+        val bassRoute = SoftwarePcmDspProcessor.resolveBassRoute(mode, hwBassSupported, dpAvailable)
+        val virtRoute = SoftwarePcmDspProcessor.resolveVirtualizerRoute(mode, hwVirtSupported, dpAvailable)
+
+        // Если аппаратный эквалайзер не вернул полос, создаём 5 виртуальных полос от DynamicsProcessing PreEQ
+        val finalEqBands = if (eqBandsList.isNotEmpty()) {
+            eqBandsList
+        } else {
+            listOf(60, 230, 910, 3600, 14000).mapIndexed { idx, freq ->
+                EqBandInfo(
+                    index = idx,
+                    centerFreqHz = freq,
+                    minLevelMb = -1500,
+                    maxLevelMb = 1500,
+                    currentLevelMb = settings.customBandsMb.getOrElse(idx) { 0 }
+                )
+            }
         }
 
         _runtimeState.value = _runtimeState.value.copy(
-            eqBands = eqBandsList,
-            supportedEffectsSummary = if (activeEffects.isEmpty()) "Нет аппаратных эффектов" else activeEffects.joinToString(", ")
+            eqBands = finalEqBands,
+            supportedEffectsSummary = if (activeEffects.isEmpty()) "Software DSP" else activeEffects.joinToString(", "),
+            activeBassRoute = bassRoute,
+            activeVirtualizerRoute = virtRoute
         )
+    }
+
+    /**
+     * Настраивает 6-полосный PreEQ, поканальный баланс Л/П и Лимитер внутри DynamicsProcessing.
+     * Благодаря этому ползунки Баса, Объёма, Эквалайзера и Баланса Л/П реально меняют звук даже на сессии 0!
+     */
+    private fun configureDynamicsProcessingStage(
+        dp: DynamicsProcessing,
+        boostPercent: Int,
+        settings: GlobalSettings
+    ) {
+        val extraBoostDb = if (loudnessEnhancer == null && boostPercent > 100) {
+            (20f * log10(boostPercent / 100f)).coerceIn(0f, 36f)
+        } else 0f
+
+        val (leftPanDb, rightPanDb) = SoftwarePcmDspProcessor.balanceToChannelAttenuationDb(settings.balanceLeftRight)
+        dp.setInputGainbyChannel(0, extraBoostDb + leftPanDb)
+        dp.setInputGainbyChannel(1, extraBoostDb + rightPanDb)
+
+        val bassExtraDb = SoftwarePcmDspProcessor.bassSliderToGainDb(settings.bassBoostStrength)
+        val virtExtraDb = (settings.virtualizerStrength / 1000f) * 5.5f
+
+        val preset = runCatching { EqPreset.valueOf(settings.activeEqPreset) }.getOrDefault(EqPreset.FLAT)
+        val userBandsDb = (0 until 5).map { b ->
+            if (preset == EqPreset.CUSTOM) {
+                (settings.customBandsMb.getOrElse(b) { 0 }) / 100f
+            } else {
+                preset.gainsDb.getOrElse(b) { 0f }
+            }
+        }
+
+        // Формируем 6 полос PreEQ: полосы 0 и 1 получают подъём от BassBoost, полосы 4 и 5 — стерео-акцент от Virtualizer
+        for (ch in 0..1) {
+            val preEq = DynamicsProcessing.Eq(true, true, 6)
+            for (bandIdx in 0 until 6) {
+                val baseEqDb = when (bandIdx) {
+                    0 -> userBandsDb[0] + bassExtraDb
+                    1 -> userBandsDb[0] * 0.5f + userBandsDb[1] * 0.5f + (bassExtraDb * 0.65f)
+                    2 -> userBandsDb[1]
+                    3 -> userBandsDb[2]
+                    4 -> userBandsDb[3] + (if (ch == 0) virtExtraDb else virtExtraDb * 0.4f)
+                    else -> userBandsDb[4] + (if (ch == 1) virtExtraDb else virtExtraDb * 0.4f)
+                }.coerceIn(-15f, 18f)
+
+                val band = DynamicsProcessing.EqBand(true, DP_PREEQ_CUTOFFS[bandIdx], baseEqDb)
+                preEq.setBand(bandIdx, band)
+            }
+            dp.setPreEqByChannelIndex(ch, preEq)
+        }
+
+        val limiterConfig = DynamicsProcessing.Limiter(
+            true,
+            settings.limiterMode != LimiterMode.OFF,
+            0,
+            settings.attackMs.toFloat().coerceAtLeast(1f),
+            settings.releaseMs.toFloat().coerceAtLeast(10f),
+            10f,
+            settings.limiterThresholdDb,
+            0f
+        )
+        dp.setLimiterAllChannelsTo(limiterConfig)
     }
 
     private fun applyPresetBandsToEqualizer(eq: Equalizer, settings: GlobalSettings) {
         val numBands = eq.numberOfBands.toInt()
         val minMb = eq.bandLevelRange[0].toInt()
         val maxMb = eq.bandLevelRange[1].toInt()
+        val bassBonusMb = (SoftwarePcmDspProcessor.bassSliderToGainDb(settings.bassBoostStrength) * 80f).toInt()
 
         val preset = runCatching { EqPreset.valueOf(settings.activeEqPreset) }.getOrDefault(EqPreset.FLAT)
         for (b in 0 until numBands) {
-            val targetMb = if (preset == EqPreset.CUSTOM) {
+            val baseMb = if (preset == EqPreset.CUSTOM) {
                 settings.customBandsMb.getOrElse(b) { 0 }
             } else {
                 val db = preset.gainsDb.getOrElse(b) { 0f }
                 (db * 100f).toInt()
             }
-            eq.setBandLevel(b.toShort(), targetMb.coerceIn(minMb, maxMb).toShort())
+            val totalMb = if (b == 0) baseMb + bassBonusMb else if (b == 1) baseMb + (bassBonusMb / 2) else baseMb
+            eq.setBandLevel(b.toShort(), totalMb.coerceIn(minMb, maxMb).toShort())
         }
     }
 
@@ -1002,47 +1072,38 @@ class AudioBoosterService : Service() {
                 _runtimeState.value = _runtimeState.value.copy(eqBands = updatedBands)
             }
         }
-        runCatching {
-            bassBoost?.let { if (it.strengthSupported) it.setStrength(settings.bassBoostStrength.coerceIn(0, 1000).toShort()) }
-        }
-        runCatching {
-            virtualizer?.let { if (it.strengthSupported) it.setStrength(settings.virtualizerStrength.coerceIn(0, 1000).toShort()) }
-        }
-        runCatching {
-            dynamicsProcessing?.let { dp ->
-                val extraInputGainDb = if (loudnessEnhancer == null && clamped > 100) {
-                    (20f * log10(clamped / 100f)).coerceIn(0f, 36f)
-                } else 0f
-                dp.setInputGainAllChannelsTo(extraInputGainDb)
 
-                val lim = DynamicsProcessing.Limiter(
-                    true,
-                    settings.limiterMode != LimiterMode.OFF,
-                    0,
-                    settings.attackMs.toFloat().coerceAtLeast(1f),
-                    settings.releaseMs.toFloat().coerceAtLeast(10f),
-                    10f,
-                    settings.limiterThresholdDb,
-                    0f
-                )
-                dp.setLimiterAllChannelsTo(lim)
-                dp.enabled = settings.limiterMode != LimiterMode.OFF || extraInputGainDb > 0f
+        runCatching {
+            bassBoost?.let { bb ->
+                if (bb.strengthSupported) {
+                    val str = settings.bassBoostStrength.coerceIn(0, 1000).toShort()
+                    bb.setStrength(str)
+                    bb.enabled = str > 0
+                }
             }
         }
 
-        val cleanStatus = if (!_runtimeState.value.isRunning) {
-            getString(R.string.status_idle)
-        } else if (_runtimeState.value.activeMode == BoostMode.STANDARD) {
-            getString(R.string.status_active_soft, gainMb / 100f)
-        } else {
-            getString(R.string.status_active_capture, clamped / 100f)
+        runCatching {
+            virtualizer?.let { virt ->
+                if (virt.strengthSupported) {
+                    val str = settings.virtualizerStrength.coerceIn(0, 1000).toShort()
+                    virt.setStrength(str)
+                    virt.enabled = str > 0
+                }
+            }
+        }
+
+        runCatching {
+            dynamicsProcessing?.let { dp ->
+                configureDynamicsProcessingStage(dp, clamped, settings)
+                dp.enabled = true
+            }
         }
 
         _runtimeState.value = _runtimeState.value.copy(
             currentBoostPercent = targetBoostPercent,
             currentGainMillibels = calculateGainMillibels(targetBoostPercent),
-            limiterMode = settings.limiterMode,
-            statusMessage = cleanStatus
+            limiterMode = settings.limiterMode
         )
 
         if (triggerIsland && _runtimeState.value.isRunning) {
@@ -1051,9 +1112,6 @@ class AudioBoosterService : Service() {
         updateFloatingText(targetBoostPercent)
     }
 
-    /**
-     * Плавно меняет аппаратное усиление в милли-децибелах без спама в NotificationManager на промежуточных шагах
-     */
     private fun smoothAudioHardwareRampTo(targetBoost: Int, durationMs: Int) {
         fadeJob?.cancel()
         fadeJob = serviceScope.launch {
@@ -1103,14 +1161,12 @@ class AudioBoosterService : Service() {
         }
 
         visualizerLoopJob = serviceScope.launch {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             val waveBytes = ByteArray(128)
-            val emptyBars = List(SPECTRUM_BAR_COUNT) { 0f }
 
             while (isActive && _runtimeState.value.activeMode == BoostMode.STANDARD) {
                 val screenOn = powerManager?.isInteractive ?: true
                 if (!screenOn) {
-                    // Когда экран выключен, не нагружаем CPU расчётом спектра
                     delay(500L)
                     continue
                 }
@@ -1161,7 +1217,7 @@ class AudioBoosterService : Service() {
                         hasActiveAudioStream = false,
                         peakSignal = 0f,
                         rmsSignal = 0f,
-                        spectrumBands = emptyBars,
+                        spectrumBands = EMPTY_SPECTRUM,
                         isLimiterEngaged = false
                     )
                 }
@@ -1213,8 +1269,6 @@ class AudioBoosterService : Service() {
 
     private fun calculateGainMillibels(boostPercent: Int): Int {
         if (boostPercent <= 100) return 0
-        // В диапазоне 100..1000% используем точную акустическую формулу: 1 дБ = 100 мБ -> 2000 * log10(boost/100)
-        // При 500% (5.0x) это даёт ровно +1398 мБ (+14.0 дБ). Выше 1000% разгоняем до потолка 30 000 мБ.
         val rawGainMb = if (boostPercent <= 1000) {
             (2000.0 * log10(boostPercent / 100.0)).roundToInt()
         } else {
@@ -1404,7 +1458,7 @@ class AudioBoosterService : Service() {
                 boostPercent = targetBoostPercent,
                 jsonSizeBytes = 0,
                 isSuccess = true,
-                detail = "Уведомление ID=$NOTIF_ID удалено из системы"
+                detail = "ID=$NOTIF_ID canceled"
             )
         }
     }
@@ -1439,11 +1493,10 @@ class AudioBoosterService : Service() {
             hasActiveAudioStream = false,
             peakSignal = 0f,
             rmsSignal = 0f,
-            spectrumBands = List(SPECTRUM_BAR_COUNT) { 0f },
+            spectrumBands = EMPTY_SPECTRUM,
             isLimiterEngaged = false,
             isCapturingSilenceOrDrm = false,
-            sleepTimerRemainingSec = 0,
-            statusMessage = getString(R.string.status_idle)
+            sleepTimerRemainingSec = 0
         )
     }
 

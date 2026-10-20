@@ -157,7 +157,7 @@ data class GlobalSettings(
     val powerSaveGlass: Boolean = false,
     val freeLensDragEnabled: Boolean = true,
     val lensRefractionStrength: Float = 0.65f,
-    val languageCode: String = "ru",
+    val languageCode: String = "system",
     // Поведение
     val autoStartOnBluetooth: Boolean = true,
     val startOnBoot: Boolean = false,
@@ -383,7 +383,7 @@ class SettingsRepository(private val context: Context) {
             powerSaveGlass = o.optBoolean("powerSaveGlass", false),
             freeLensDragEnabled = o.optBoolean("freeLensDragEnabled", true),
             lensRefractionStrength = o.optDouble("lensRefractionStrength", 0.65).toFloat().coerceIn(0f, 1f),
-            languageCode = o.optString("languageCode", "ru").let { if (it in listOf("ru", "en")) it else "ru" },
+            languageCode = o.optString("languageCode", "system").let { if (it in listOf("system", "ru", "en")) it else "system" },
             autoStartOnBluetooth = o.optBoolean("autoStartOnBluetooth", true),
             startOnBoot = o.optBoolean("startOnBoot", false),
             rememberLastLevel = o.optBoolean("rememberLastLevel", true),

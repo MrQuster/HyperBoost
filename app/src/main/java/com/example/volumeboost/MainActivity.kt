@@ -6,6 +6,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.os.StrictMode
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,8 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.os.StrictMode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.volumeboost.data.AppThemeMode
 import com.example.volumeboost.data.BoostMode
 import com.example.volumeboost.device.FeatureRegistry
@@ -41,6 +41,8 @@ import com.example.volumeboost.viewmodel.DevicesViewModel
 import com.example.volumeboost.viewmodel.EqualizerViewModel
 import com.example.volumeboost.viewmodel.HomeViewModel
 import com.example.volumeboost.viewmodel.SettingsViewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 
 class MainActivity : AppCompatActivity() {
 
@@ -70,6 +72,8 @@ class MainActivity : AppCompatActivity() {
             val runtime by homeViewModel.runtimeState.collectAsStateWithLifecycle()
             val boostPercent by homeViewModel.boostPercent.collectAsStateWithLifecycle()
             val selectedTab by homeViewModel.selectedTabIndex.collectAsStateWithLifecycle()
+
+            val hazeState = remember { HazeState() }
 
             val systemPlan = remember(deviceProfile, globalSettings.islandRoutingPreference, globalSettings.powerSaveGlass) {
                 FeatureRegistry.resolvePlan(
@@ -111,9 +115,9 @@ class MainActivity : AppCompatActivity() {
                         else -> Color(0xD9FFFFFF)
                     },
                     navBarBackingColor = when {
-                        isAmoled -> Color(0xF204060C)
-                        isDark -> Color(0xEB080D1C)
-                        else -> Color(0xF2F1F5F9)
+                        isAmoled -> Color(0x9904060C)
+                        isDark -> Color(0x8C080D1C)
+                        else -> Color(0xB3F1F5F9)
                     },
                     accentColor = accent,
                     textPrimary = if (isDark) Color.White else Color(0xFF0F172A),
@@ -166,7 +170,6 @@ class MainActivity : AppCompatActivity() {
                         permissionsLauncher.launch(perms.toTypedArray())
                     }
 
-                    // 5 вкладок нижней стеклянной линзы
                     val navTabs = listOf(
                         GlassTabItem(stringResource(R.string.nav_home), Icons.Default.Home),
                         GlassTabItem(stringResource(R.string.nav_eq), Icons.Default.Equalizer),
@@ -178,19 +181,23 @@ class MainActivity : AppCompatActivity() {
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val isWideScreen = maxWidth >= 600.dp || systemPlan.useSideNavigationRail
 
-                        DynamicBlobBackground(
-                            boostPercent = boostPercent,
-                            audioPeakLevel = runtime.peakSignal,
-                            animationSpeed = globalSettings.bgAnimationSpeed
-                        )
-
                         if (!globalSettings.onboardingCompleted) {
+                            DynamicBlobBackground(
+                                boostPercent = boostPercent,
+                                audioPeakLevel = runtime.peakSignal,
+                                animationSpeed = globalSettings.bgAnimationSpeed
+                            )
                             OnboardingOverlay(
                                 onFinishOnboarding = {
                                     settingsViewModel.update { it.copy(onboardingCompleted = true) }
                                 }
                             )
                         } else if (isWideScreen) {
+                            DynamicBlobBackground(
+                                boostPercent = boostPercent,
+                                audioPeakLevel = runtime.peakSignal,
+                                animationSpeed = globalSettings.bgAnimationSpeed
+                            )
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -217,33 +224,49 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .statusBarsPadding()
-                                    .navigationBarsPadding()
-                            ) {
-                                when (selectedTab) {
-                                    0 -> HomeScreen(homeViewModel, startEngineRequest)
-                                    1 -> EqualizerScreen(eqViewModel)
-                                    2 -> DevicesScreen(devicesViewModel)
-                                    3 -> SettingsScreen(
-                                        viewModel = settingsViewModel,
-                                        homeViewModel = homeViewModel,
-                                        onOpenSystemTab = { homeViewModel.selectTab(4) }
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                // Весь прокручиваемый контент помечен как источник размытия .haze(state = hazeState)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .haze(state = hazeState)
+                                ) {
+                                    DynamicBlobBackground(
+                                        boostPercent = boostPercent,
+                                        audioPeakLevel = runtime.peakSignal,
+                                        animationSpeed = globalSettings.bgAnimationSpeed
                                     )
-                                    4 -> SystemScreen(settingsViewModel)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .statusBarsPadding()
+                                    ) {
+                                        when (selectedTab) {
+                                            0 -> HomeScreen(homeViewModel, startEngineRequest)
+                                            1 -> EqualizerScreen(eqViewModel)
+                                            2 -> DevicesScreen(devicesViewModel)
+                                            3 -> SettingsScreen(
+                                                viewModel = settingsViewModel,
+                                                homeViewModel = homeViewModel,
+                                                onOpenSystemTab = { homeViewModel.selectTab(4) }
+                                            )
+                                            4 -> SystemScreen(settingsViewModel)
+                                        }
+                                    }
                                 }
 
                                 GlassLensTabBar(
                                     items = navTabs,
                                     selectedIndex = selectedTab,
                                     onSelect = { homeViewModel.selectTab(it) },
+                                    hazeState = hazeState,
                                     freeLensDragEnabled = globalSettings.freeLensDragEnabled,
                                     refractionStrength = if (systemPlan.glassQualityTier == GlassQualityTier.FULL_AGSL_SHADER) {
                                         globalSettings.lensRefractionStrength
                                     } else 0f,
-                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .navigationBarsPadding()
                                 )
                             }
                         }

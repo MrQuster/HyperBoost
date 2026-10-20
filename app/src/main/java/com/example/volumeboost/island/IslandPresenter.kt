@@ -14,6 +14,7 @@ import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import com.example.volumeboost.MainActivity
 import com.example.volumeboost.R
+import com.example.volumeboost.util.LocaleHelper
 import com.example.volumeboost.data.*
 import com.example.volumeboost.device.DeviceProfile
 import com.example.volumeboost.device.FeatureRegistry
@@ -299,6 +300,7 @@ class IslandFallbackCoordinator(private val context: Context) {
         modeLabel: String
     ): IslandBuildResult {
         val seqId = sequenceGenerator.getAndIncrement()
+        val locCtx = LocaleHelper.getLocalizedContext(context, settings.languageCode)
         val keyguard = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         val isLocked = keyguard?.isKeyguardLocked ?: false
 
@@ -328,7 +330,7 @@ class IslandFallbackCoordinator(private val context: Context) {
         val intents = createPendingIntents(context)
 
         if (settings.islandOnlyWhenPlaying && !isMusicPlaying) {
-            val (quietNotif, bytes) = classic.buildNotification(context, channelId, snapshot, intents)
+            val (quietNotif, bytes) = classic.buildNotification(locCtx, channelId, snapshot, intents)
             return IslandBuildResult(
                 sequenceId = seqId,
                 notification = quietNotif,
@@ -340,7 +342,7 @@ class IslandFallbackCoordinator(private val context: Context) {
         }
 
         if (!settings.islandEnabled || settings.islandStyle == IslandStyleMode.DISABLED) {
-            val (notif, bytes) = classic.buildNotification(context, channelId, snapshot, intents)
+            val (notif, bytes) = classic.buildNotification(locCtx, channelId, snapshot, intents)
             return IslandBuildResult(
                 sequenceId = seqId,
                 notification = notif,
@@ -370,7 +372,7 @@ class IslandFallbackCoordinator(private val context: Context) {
                 continue
             }
             val result = runCatching {
-                presenter.buildNotification(context, channelId, snapshot, intents)
+                presenter.buildNotification(locCtx, channelId, snapshot, intents)
             }
             if (result.isSuccess) {
                 val (notif, bytes) = result.getOrThrow()
@@ -387,7 +389,7 @@ class IslandFallbackCoordinator(private val context: Context) {
             }
         }
 
-        val (fallbackNotif, bytes) = classic.buildNotification(context, channelId, snapshot, intents)
+        val (fallbackNotif, bytes) = classic.buildNotification(locCtx, channelId, snapshot, intents)
         return IslandBuildResult(
             sequenceId = seqId,
             notification = fallbackNotif,

@@ -1,104 +1,124 @@
 package com.example.volumeboost.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.BluetoothAudio
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.volumeboost.R
 import com.example.volumeboost.ui.components.GlassButton
 import com.example.volumeboost.ui.components.GlassCard
 import com.example.volumeboost.ui.theme.LocalGlassTokens
 
+private data class OnboardingPageData(
+    val titleRes: Int,
+    val descriptionRes: Int,
+    val icon: ImageVector
+)
+
 @Composable
 fun OnboardingOverlay(onFinishOnboarding: () -> Unit) {
     val tokens = LocalGlassTokens.current
-    var step by remember { mutableIntStateOf(0) }
+    var stepIndex by remember { mutableIntStateOf(0) }
 
     val pages = listOf(
-        Triple(
-            Icons.Default.VolumeUp,
-            "Добро пожаловать в HyperBoost 2.0",
-            "Усилитель громкости в эстетике Liquid Glass, созданный специально для Xiaomi 17T Pro и прошивки HyperOS."
-        ),
-        Triple(
-            Icons.Default.GraphicEq,
-            "Два звуковых движка + Лимитер",
-            "Мягкий режим (Session 0) работает без задержки. А режим «Захват звука» (MediaProjection) обходит любые системные ограничения HyperOS и защищает динамики от хрипа мягким DSP-лимитером."
-        ),
-        Triple(
-            Icons.Default.Headphones,
-            "Умные профили устройств",
-            "Приложение автоматически распознаёт динамики телефона, Bluetooth-наушники и USB-ЦАП, плавно применяя индивидуальный буст и эквалайзер без щелчков."
-        ),
-        Triple(
-            Icons.Default.Security,
-            "Необходимые разрешения",
-            "На следующем шаге разрешите уведомления (для управления из шторки), доступ к Bluetooth (для чтения имени наушников) и микрофону/захвату аудио (требование Android для AudioPlaybackCapture)."
-        )
+        OnboardingPageData(R.string.onb_title_1, R.string.onb_desc_1, Icons.AutoMirrored.Filled.VolumeUp),
+        OnboardingPageData(R.string.onb_title_2, R.string.onb_desc_2, Icons.Default.GraphicEq),
+        OnboardingPageData(R.string.onb_title_3, R.string.onb_desc_3, Icons.Default.BluetoothAudio),
+        OnboardingPageData(R.string.onb_title_4, R.string.onb_desc_4, Icons.Default.Security)
     )
+
+    val current = pages[stepIndex]
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f))
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        val current = pages[step]
-        GlassCard(modifier = Modifier.fillMaxWidth()) {
+        GlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = 32.dp
+        ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+                modifier = Modifier.padding(vertical = 10.dp)
             ) {
-                Icon(
-                    imageVector = current.first,
-                    contentDescription = null,
-                    tint = tokens.accentColor,
-                    modifier = Modifier.size(64.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(tokens.accentColor.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = current.icon,
+                        contentDescription = null,
+                        tint = tokens.accentColor,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
                 Text(
-                    text = current.second,
+                    text = stringResource(current.titleRes),
                     color = tokens.textPrimary,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Black,
                     textAlign = TextAlign.Center
                 )
+
                 Text(
-                    text = current.third,
+                    text = stringResource(current.descriptionRes),
                     color = tokens.textSecondary,
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                     lineHeight = 20.sp
                 )
+
                 Text(
-                    text = "Шаг ${step + 1} из ${pages.size}",
+                    text = stringResource(R.string.onb_step_fmt, stepIndex + 1, pages.size),
                     color = tokens.accentColor,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
                 )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (step > 0) {
-                        GlassButton(text = "Назад", onClick = { step-- })
+                    if (stepIndex > 0) {
+                        GlassButton(
+                            text = stringResource(R.string.onb_back),
+                            onClick = { stepIndex-- }
+                        )
                     } else {
                         Spacer(modifier = Modifier.width(10.dp))
                     }
+
                     GlassButton(
-                        text = if (step < pages.lastIndex) "Далее" else "Начать работу",
+                        text = if (stepIndex < pages.lastIndex) stringResource(R.string.onb_next)
+                        else stringResource(R.string.onb_start),
                         isAccent = true,
                         onClick = {
-                            if (step < pages.lastIndex) step++ else onFinishOnboarding()
+                            if (stepIndex < pages.lastIndex) stepIndex++ else onFinishOnboarding()
                         }
                     )
                 }

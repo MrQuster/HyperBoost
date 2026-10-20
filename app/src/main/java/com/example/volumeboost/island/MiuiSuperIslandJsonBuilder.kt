@@ -130,7 +130,7 @@ object MiuiSuperIslandJsonBuilder {
 
                 put("baseInfo", JSONObject().apply {
                     put("type", 2)
-                    put("title", "Усиление: ${snapshot.boostPercent}%")
+                    put("title", "HyperBoost • ${snapshot.boostPercent}%")
                     put("colorTitle", "#FFFFFF")
                     put("content", expandedSubtitle)
                     put("colorContent", COLOR_SUBTEXT_HEX)

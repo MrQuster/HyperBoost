@@ -25,6 +25,8 @@ import com.example.volumeboost.device.DeviceProfileDetector
 import com.example.volumeboost.device.FeatureRegistry
 import com.example.volumeboost.device.OsOverrideOption
 import com.example.volumeboost.service.AudioBoosterService
+import com.example.volumeboost.util.LocaleHelper
+import com.example.volumeboost.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -495,8 +497,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setAppLanguage(langCode: String) {
         update { it.copy(languageCode = langCode) }
-        val localeList = LocaleListCompat.forLanguageTags(langCode)
-        AppCompatDelegate.setApplicationLocales(localeList)
+        LocaleHelper.applyAppLocale(langCode)
+    }
+
+    fun triggerAudioEffectsTest() {
+        context.startService(Intent(context, AudioBoosterService::class.java).apply {
+            action = AudioBoosterService.ACTION_TEST_AUDIO_EFFECTS
+        })
     }
 
 

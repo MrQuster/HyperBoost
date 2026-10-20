@@ -59,7 +59,7 @@ fun SettingsScreen(
     val deviceProfile by viewModel.deviceProfile.collectAsState()
     val currentBoost by homeViewModel.boostPercent.collectAsState()
 
-    val isEn = settings.languageCode == "en"
+    val isEn = !com.example.volumeboost.util.LocaleHelper.isRussianActive(context, settings.languageCode)
     val systemPlan = remember(deviceProfile, settings.islandRoutingPreference, settings.powerSaveGlass) {
         FeatureRegistry.resolvePlan(deviceProfile, settings.islandRoutingPreference, settings.powerSaveGlass)
     }
@@ -465,18 +465,30 @@ fun SettingsScreen(
                     onCheckedChange = { v -> viewModel.update { it.copy(powerSaveGlass = v) } }
                 )
 
+                Text(
+                    text = stringResource(R.string.language_label),
+                    color = tokens.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     GlassChip(
-                        label = "Русский (RU)",
+                        label = stringResource(R.string.lang_system),
+                        selected = settings.languageCode == "system",
+                        onClick = { viewModel.setAppLanguage("system") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    GlassChip(
+                        label = stringResource(R.string.lang_ru),
                         selected = settings.languageCode == "ru",
                         onClick = { viewModel.setAppLanguage("ru") },
                         modifier = Modifier.weight(1f)
                     )
                     GlassChip(
-                        label = "English (EN)",
+                        label = stringResource(R.string.lang_en),
                         selected = settings.languageCode == "en",
                         onClick = { viewModel.setAppLanguage("en") },
                         modifier = Modifier.weight(1f)

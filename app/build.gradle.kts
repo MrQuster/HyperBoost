@@ -15,18 +15,18 @@ if (keystorePropertiesFile.exists()) {
 
 val rawTagVersion = (project.findProperty("versionName") as? String)
     ?: System.getenv("GITHUB_REF_NAME")?.removePrefix("v")
-    ?: "1.2.0"
+    ?: "1.3.0"
 
 val cleanVersionName = if (rawTagVersion.matches(Regex("""^\d+\.\d+\.\d+.*"""))) {
     rawTagVersion
 } else {
-    "1.2.0"
+    "1.3.0"
 }
 
 fun computeDeterministicVersionCode(ver: String): Int {
     val core = ver.substringBefore("-").split(".")
     val major = core.getOrNull(0)?.toIntOrNull() ?: 1
-    val minor = core.getOrNull(1)?.toIntOrNull() ?: 2
+    val minor = core.getOrNull(1)?.toIntOrNull() ?: 3
     val patch = core.getOrNull(2)?.toIntOrNull() ?: 0
     return (major * 10000 + minor * 100 + patch).coerceAtLeast(1)
 }
@@ -45,7 +45,7 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-        resourceConfigurations += listOf("ru", "en")
+        resourceConfigurations += listOf("en", "ru")
     }
 
     signingConfigs {
@@ -101,6 +101,7 @@ android {
     lint {
         abortOnError = false
         checkReleaseBuilds = false
+        warning += "HardcodedText"
     }
 }
 
@@ -122,6 +123,7 @@ dependencies {
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.profileinstaller)
+    implementation(libs.haze)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
