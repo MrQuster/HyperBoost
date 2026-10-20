@@ -66,3 +66,7 @@ HyperBoost — приложение для Android (начиная с Android 10
 git clone [https://github.com/MrQuster/HyperBoost.git](https://github.com/MrQuster/HyperBoost.git)
 cd HyperBoost
 ./gradlew test assembleDebug
+
+## Автор
+
+Автор проекта: [MrQuster](https://github.com/MrQuster).

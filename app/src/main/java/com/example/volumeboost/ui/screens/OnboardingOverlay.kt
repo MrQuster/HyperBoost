@@ -25,6 +25,7 @@ import com.example.volumeboost.R
 import com.example.volumeboost.ui.components.GlassButton
 import com.example.volumeboost.ui.components.GlassCard
 import com.example.volumeboost.ui.theme.LocalGlassTokens
+import com.example.volumeboost.util.AppInfo
 
 private data class OnboardingPageData(
     val titleRes: Int,
@@ -92,6 +93,15 @@ fun OnboardingOverlay(onFinishOnboarding: () -> Unit) {
                     textAlign = TextAlign.Center,
                     lineHeight = 20.sp
                 )
+
+                if (stepIndex == pages.lastIndex) {
+                    Text(
+                        text = stringResource(R.string.onb_by_author_fmt, AppInfo.AUTHOR_NAME),
+                        color = tokens.textSecondary.copy(alpha = 0.78f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
 
                 Text(
                     text = stringResource(R.string.onb_step_fmt, stepIndex + 1, pages.size),

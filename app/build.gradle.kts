@@ -1,3 +1,6 @@
+// HyperBoost — Android Volume Booster & Equalizer
+// Author: MrQuster (https://github.com/MrQuster/HyperBoost)
+
 import java.util.Properties
 import java.io.FileInputStream
 
@@ -15,19 +18,19 @@ if (keystorePropertiesFile.exists()) {
 
 val rawTagVersion = (project.findProperty("versionName") as? String)
     ?: System.getenv("GITHUB_REF_NAME")?.removePrefix("v")
-    ?: "1.3.0"
+    ?: "1.3.1"
 
 val cleanVersionName = if (rawTagVersion.matches(Regex("""^\d+\.\d+\.\d+.*"""))) {
     rawTagVersion
 } else {
-    "1.3.0"
+    "1.3.1"
 }
 
 fun computeDeterministicVersionCode(ver: String): Int {
     val core = ver.substringBefore("-").split(".")
     val major = core.getOrNull(0)?.toIntOrNull() ?: 1
     val minor = core.getOrNull(1)?.toIntOrNull() ?: 3
-    val patch = core.getOrNull(2)?.toIntOrNull() ?: 0
+    val patch = core.getOrNull(2)?.toIntOrNull() ?: 1
     return (major * 10000 + minor * 100 + patch).coerceAtLeast(1)
 }
 
@@ -41,6 +44,13 @@ android {
         targetSdk = 35
         versionCode = computeDeterministicVersionCode(cleanVersionName)
         versionName = cleanVersionName
+
+        buildConfigField("String", "AUTHOR_NAME", "\"MrQuster\"")
+        buildConfigField("String", "GITHUB_USER", "\"MrQuster\"")
+        buildConfigField("String", "GITHUB_PROFILE_URL", "\"https://github.com/MrQuster\"")
+        buildConfigField("String", "REPO_URL", "\"https://github.com/MrQuster/HyperBoost\"")
+        buildConfigField("String", "RELEASES_URL", "\"https://github.com/MrQuster/HyperBoost/releases\"")
+        buildConfigField("String", "COPYRIGHT_YEAR", "\"2026\"")
 
         vectorDrawables {
             useSupportLibrary = true

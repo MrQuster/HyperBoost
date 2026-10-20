@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -31,8 +32,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.volumeboost.R
 import com.example.volumeboost.data.*
 import com.example.volumeboost.device.FeatureRegistry
@@ -42,6 +45,8 @@ import com.example.volumeboost.island.ShizukuIslandBypassHelper
 import com.example.volumeboost.ui.components.*
 import com.example.volumeboost.ui.theme.AccentPalettes
 import com.example.volumeboost.ui.theme.LocalGlassTokens
+import com.example.volumeboost.util.AppInfo
+import com.example.volumeboost.util.LocaleHelper
 import com.example.volumeboost.viewmodel.HomeViewModel
 import com.example.volumeboost.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
@@ -55,11 +60,11 @@ fun SettingsScreen(
     val context = LocalContext.current
     val tokens = LocalGlassTokens.current
     val scope = rememberCoroutineScope()
-    val settings by viewModel.settings.collectAsState()
-    val deviceProfile by viewModel.deviceProfile.collectAsState()
-    val currentBoost by homeViewModel.boostPercent.collectAsState()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val deviceProfile by viewModel.deviceProfile.collectAsStateWithLifecycle()
+    val currentBoost by homeViewModel.boostPercent.collectAsStateWithLifecycle()
 
-    val isEn = !com.example.volumeboost.util.LocaleHelper.isRussianActive(context, settings.languageCode)
+    val isEn = !LocaleHelper.isRussianActive(context, settings.languageCode)
     val systemPlan = remember(deviceProfile, settings.islandRoutingPreference, settings.powerSaveGlass) {
         FeatureRegistry.resolvePlan(deviceProfile, settings.islandRoutingPreference, settings.powerSaveGlass)
     }
@@ -76,7 +81,7 @@ fun SettingsScreen(
             runCatching {
                 val json = viewModel.exportBackupJson()
                 context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
-                Toast.makeText(context, "Настройки экспортированы в JSON", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.toast_exported), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -91,7 +96,7 @@ fun SettingsScreen(
                 val ok = viewModel.importBackupJson(json)
                 Toast.makeText(
                     context,
-                    if (ok) "Настройки успешно восстановлены!" else "Ошибка чтения JSON",
+                    context.getString(if (ok) R.string.toast_imported_ok else R.string.toast_imported_err),
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -105,7 +110,7 @@ fun SettingsScreen(
             .padding(horizontal = tokens.spacingLarge, vertical = tokens.spacingMedium),
         verticalArrangement = Arrangement.spacedBy(tokens.spacingLarge)
     ) {
-        // 0. Секция: Суперостров (Hyper Island) и Уведомления (кнопки −10% и +10%)
+        // 0. Суперостров (Hyper Island) и Уведомления
         SectionHeader(stringResource(R.string.sec_island))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -116,7 +121,7 @@ fun SettingsScreen(
                 )
 
                 Text(
-                    text = "Режим выбора острова / уведомления:",
+                    text = stringResource(R.string.island_routing_label),
                     color = tokens.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -157,7 +162,7 @@ fun SettingsScreen(
                 }
 
                 Text(
-                    text = "Цветовая схема острова:",
+                    text = stringResource(R.string.island_color_label),
                     color = tokens.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -193,10 +198,7 @@ fun SettingsScreen(
                         text = stringResource(R.string.island_test_btn),
                         icon = Icons.Default.Visibility,
                         isAccent = true,
-                        onClick = {
-                            viewModel.triggerIslandPreview()
-                            Toast.makeText(context, "Тестовый остров (кнопки −10% / +10%) отправлен на 5 сек", Toast.LENGTH_SHORT).show()
-                        },
+                        onClick = { viewModel.triggerIslandPreview() },
                         modifier = Modifier.weight(1f)
                     )
                     GlassButton(
@@ -219,7 +221,6 @@ fun SettingsScreen(
                 )
 
                 AnimatedVisibility(visible = settings.islandShizukuBypassEnabled) {
-                    val shizukuInstalled = remember { ShizukuIslandBypassHelper.isShizukuInstalled(context) }
                     val commands = remember { ShizukuIslandBypassHelper.buildManualAdbCommands(context.packageName) }
                     Column(
                         modifier = Modifier
@@ -229,12 +230,6 @@ fun SettingsScreen(
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = if (shizukuInstalled) "Shizuku обнаружен. Обход зависит от региона прошивки."
-                            else "Пакет Shizuku не найден. Команды для ПК (ADB):",
-                            color = tokens.textSecondary,
-                            fontSize = 12.sp
-                        )
                         Text(
                             text = commands.trim(),
                             color = tokens.accentColor,
@@ -246,7 +241,7 @@ fun SettingsScreen(
             }
         }
 
-        // 1. Секция: Звук, шкала усиления и DSP
+        // 1. Звук, шкала усиления и DSP
         SectionHeader(stringResource(R.string.sec_sound))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -266,13 +261,13 @@ fun SettingsScreen(
                 }
 
                 SettingToggleRow(
-                    title = "Режим «Без ограничения» (максимум до 10 000% / +300 дБ)",
+                    title = stringResource(R.string.sound_unlimited_toggle),
                     checked = settings.unlimitedBoostEnabled,
                     onCheckedChange = { v -> viewModel.update { it.copy(unlimitedBoostEnabled = v) } }
                 )
 
                 Text(
-                    text = "Ручной ввод точного уровня усиления (%):",
+                    text = stringResource(R.string.sound_manual_input_label),
                     color = tokens.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -304,7 +299,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                     GlassButton(
-                        text = "Применить",
+                        text = stringResource(R.string.action_apply),
                         isAccent = true,
                         onClick = {
                             val parsed = manualInputText.toIntOrNull() ?: 100
@@ -317,7 +312,7 @@ fun SettingsScreen(
                 }
 
                 Text(
-                    text = "Опциональный DSP-лимитер:",
+                    text = stringResource(R.string.sound_limiter_mode_label),
                     color = tokens.textPrimary,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
@@ -337,24 +332,24 @@ fun SettingsScreen(
                 }
 
                 LabeledGlassSliderRow(
-                    title = "Порог срабатывания лимитера",
-                    valueText = "${"%.1f".format(settings.limiterThresholdDb)} дБ",
+                    title = stringResource(R.string.sound_limiter_thresh),
+                    valueText = stringResource(R.string.unit_db, "%.1f".format(settings.limiterThresholdDb)),
                     value = settings.limiterThresholdDb,
                     onValueChange = { v -> viewModel.update { it.copy(limiterThresholdDb = v) } },
                     valueRange = -15f..0f
                 )
 
                 LabeledGlassSliderRow(
-                    title = "Время атаки лимитера",
-                    valueText = "${settings.attackMs} мс",
+                    title = stringResource(R.string.sound_limiter_attack),
+                    valueText = stringResource(R.string.unit_ms, settings.attackMs),
                     value = settings.attackMs.toFloat(),
                     onValueChange = { v -> viewModel.update { it.copy(attackMs = v.toInt().coerceAtLeast(1)) } },
                     valueRange = 1f..50f
                 )
 
                 LabeledGlassSliderRow(
-                    title = "Плавность смены громкости (Fade)",
-                    valueText = "${settings.fadeDurationMs} мс",
+                    title = stringResource(R.string.sound_fade_duration),
+                    valueText = stringResource(R.string.unit_ms, settings.fadeDurationMs),
                     value = settings.fadeDurationMs.toFloat(),
                     onValueChange = { v -> viewModel.update { it.copy(fadeDurationMs = v.toInt()) } },
                     valueRange = 20f..1000f
@@ -362,10 +357,16 @@ fun SettingsScreen(
             }
         }
 
-        // 2. Секция: Внешний вид и Линза Liquid Glass
+        // 2. Внешний вид и Линза Liquid Glass
         SectionHeader(stringResource(R.string.sec_appearance))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = stringResource(R.string.theme_label),
+                    color = tokens.textPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
                 val themes = AppThemeMode.entries
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -397,13 +398,13 @@ fun SettingsScreen(
                 }
 
                 SettingToggleRow(
-                    title = "Свободная линза (вытягивание капсулы из нижней панели)",
+                    title = stringResource(R.string.lens_free_drag),
                     checked = settings.freeLensDragEnabled,
                     onCheckedChange = { v -> viewModel.update { it.copy(freeLensDragEnabled = v) } }
                 )
 
                 LabeledGlassSliderRow(
-                    title = "Преломление стеклянной линзы (AGSL)",
+                    title = stringResource(R.string.lens_refraction),
                     valueText = "${(settings.lensRefractionStrength * 100).toInt()}%",
                     value = settings.lensRefractionStrength,
                     onValueChange = { v -> viewModel.update { it.copy(lensRefractionStrength = v) } },
@@ -411,7 +412,7 @@ fun SettingsScreen(
                 )
 
                 SettingToggleRow(
-                    title = "Динамические цвета обоев (Material You)",
+                    title = stringResource(R.string.material_you_toggle),
                     checked = settings.dynamicMaterialYou,
                     onCheckedChange = { v -> viewModel.update { it.copy(dynamicMaterialYou = v) } }
                 )
@@ -420,7 +421,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    AccentPalettes.PresetColors.forEach { (hex, _) ->
+                    AccentPalettes.PresetColors.forEach { (hex, colorName) ->
                         val isSelected = settings.accentColorHex == hex
                         Box(
                             modifier = Modifier
@@ -438,7 +439,7 @@ fun SettingsScreen(
                 }
 
                 LabeledGlassSliderRow(
-                    title = "Радиус размытия фона",
+                    title = stringResource(R.string.blur_radius_label),
                     valueText = "${settings.blurIntensityDp.toInt()} dp",
                     value = settings.blurIntensityDp,
                     onValueChange = { v -> viewModel.update { it.copy(blurIntensityDp = v) } },
@@ -446,7 +447,7 @@ fun SettingsScreen(
                 )
 
                 LabeledGlassSliderRow(
-                    title = "Плотность стекла карточек",
+                    title = stringResource(R.string.glass_density_label),
                     valueText = "${(settings.glassAlpha * 100).toInt()}%",
                     value = settings.glassAlpha,
                     onValueChange = { v -> viewModel.update { it.copy(glassAlpha = v) } },
@@ -454,13 +455,13 @@ fun SettingsScreen(
                 )
 
                 SettingToggleRow(
-                    title = "3D-параллакс и блики при наклоне телефона",
+                    title = stringResource(R.string.parallax_toggle),
                     checked = settings.parallaxEnabled,
                     onCheckedChange = { v -> viewModel.update { it.copy(parallaxEnabled = v) } }
                 )
 
                 SettingToggleRow(
-                    title = "Режим экономии заряда (упрощённое стекло)",
+                    title = stringResource(R.string.powersave_glass_toggle),
                     checked = settings.powerSaveGlass,
                     onCheckedChange = { v -> viewModel.update { it.copy(powerSaveGlass = v) } }
                 )
@@ -497,27 +498,27 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Секция: Поведение
+        // 3. Поведение
         SectionHeader(stringResource(R.string.sec_behavior))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SettingToggleRow(
-                    title = "Автозапуск буста при подключении Bluetooth",
+                    title = stringResource(R.string.beh_autostart_bt),
                     checked = settings.autoStartOnBluetooth,
                     onCheckedChange = { v -> viewModel.update { it.copy(autoStartOnBluetooth = v) } }
                 )
                 SettingToggleRow(
-                    title = "Запускать сервис при включении смартфона",
+                    title = stringResource(R.string.beh_start_boot),
                     checked = settings.startOnBoot,
                     onCheckedChange = { v -> viewModel.update { it.copy(startOnBoot = v) } }
                 )
                 SettingToggleRow(
-                    title = "Компактное уведомление в шторке",
+                    title = stringResource(R.string.beh_compact_notif),
                     checked = settings.compactNotification,
                     onCheckedChange = { v -> viewModel.update { it.copy(compactNotification = v) } }
                 )
                 SettingToggleRow(
-                    title = "Плавающая кнопка поверх экрана (Overlay)",
+                    title = stringResource(R.string.beh_floating_btn),
                     checked = settings.floatingButtonEnabled,
                     onCheckedChange = { enabled ->
                         if (enabled && !Settings.canDrawOverlays(context)) {
@@ -567,7 +568,7 @@ fun SettingsScreen(
             }
         }
 
-        // 5. Секция: Резервное копирование и сброс
+        // 5. Резервное копирование и сброс
         SectionHeader(stringResource(R.string.sec_data))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -610,47 +611,126 @@ fun SettingsScreen(
             }
         }
 
-        // 6. Карточка перехода на вкладку «Система» и GitHub Releases
-        SectionHeader("Система, Диагностика и Обновления")
+        // 6. Переход на вкладку «Система»
+        SectionHeader(stringResource(R.string.sec_system_link))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Подробная информация об устройстве, матрица возможностей и диагностика находятся во вкладке «Система».",
+                    text = stringResource(R.string.sys_link_desc),
                     color = tokens.textSecondary,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 )
+                GlassButton(
+                    text = stringResource(R.string.btn_open_system_tab),
+                    icon = Icons.Default.Memory,
+                    isAccent = true,
+                    onClick = onOpenSystemTab,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        // 7. Новая секция: «О приложении и Авторе» (MrQuster)
+        SectionHeader(stringResource(R.string.sec_about_author))
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(tokens.accentColor.copy(alpha = 0.22f))
+                                .border(1.dp, tokens.accentColor.copy(alpha = 0.55f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = AppInfo.AUTHOR_NAME,
+                                tint = tokens.accentColor,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = AppInfo.AUTHOR_NAME,
+                                color = tokens.textPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = stringResource(R.string.about_author_role),
+                                color = tokens.accentColor,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    GlassButton(
+                        text = stringResource(R.string.btn_author_github),
+                        icon = Icons.Default.OpenInNew,
+                        isAccent = true,
+                        onClick = {
+                            AppInfo.openUrlSafely(context, AppInfo.GITHUB_PROFILE_URL)
+                        }
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "${AppInfo.APP_NAME} • " + stringResource(
+                            R.string.about_version_fmt,
+                            AppInfo.VERSION_NAME,
+                            AppInfo.VERSION_CODE
+                        ),
+                        color = tokens.textPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.about_copyright_fmt,
+                            AppInfo.COPYRIGHT_YEAR,
+                            AppInfo.AUTHOR_NAME
+                        ),
+                        color = tokens.textSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     GlassButton(
-                        text = "Вкладка «Система»",
-                        icon = Icons.Default.Memory,
-                        isAccent = true,
-                        onClick = onOpenSystemTab,
+                        text = stringResource(R.string.btn_source_code),
+                        icon = Icons.Default.Code,
+                        onClick = { AppInfo.openUrlSafely(context, AppInfo.REPO_URL) },
                         modifier = Modifier.weight(1f)
                     )
                     GlassButton(
-                        text = "GitHub Releases",
-                        icon = Icons.Default.OpenInNew,
-                        onClick = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://github.com/MrQuster/HyperBoost/releases")
-                                    )
-                                )
-                            }
-                        },
+                        text = stringResource(R.string.btn_github_releases),
+                        icon = Icons.Default.Download,
+                        onClick = { AppInfo.openUrlSafely(context, AppInfo.RELEASES_URL) },
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(tokens.screenBottomPadding))
+        Spacer(modifier = Modifier.height(136.dp))
     }
 
     if (showResetSettingsDialog) {
@@ -662,7 +742,7 @@ fun SettingsScreen(
             onConfirm = {
                 viewModel.resetSettings()
                 showResetSettingsDialog = false
-                Toast.makeText(context, "Настройки сброшены по умолчанию", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.toast_reset_done), Toast.LENGTH_SHORT).show()
             }
         ) {
             Text(
@@ -683,7 +763,7 @@ fun SettingsScreen(
             onConfirm = {
                 viewModel.clearDeviceProfiles()
                 showClearProfilesDialog = false
-                Toast.makeText(context, "Профили устройств очищены", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.toast_profiles_cleared), Toast.LENGTH_SHORT).show()
             }
         ) {
             Text(
@@ -717,7 +797,7 @@ private fun SettingToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 44.dp),
+            .heightIn(min = tokens.minTouchTarget),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {

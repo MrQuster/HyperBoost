@@ -112,6 +112,14 @@
     <string name="sec_behavior">Поведение и уведомления</string>
     <string name="sec_data">Резервное копирование и сброс</string>
     <string name="sec_system_link">Система, Диагностика и Обновления</string>
+    <string name="sec_about_author">О приложении и Авторе</string>
+
+    <string name="about_author_role">Автор приложения</string>
+    <string name="about_version_fmt">Версия %1$s (%2$d)</string>
+    <string name="about_copyright_fmt">Copyright © %1$s %2$s • Лицензия MIT</string>
+    <string name="btn_author_github">GitHub</string>
+    <string name="btn_source_code">Исходный код</string>
+    <string name="err_no_browser">Не удалось открыть ссылку (браузер не найден)</string>
 
     <string name="island_enable_toggle">Показывать управление в Суперострове</string>
     <string name="island_routing_label">Режим выбора острова / уведомления:</string>
@@ -261,6 +269,7 @@
     <string name="onb_desc_3" formatted="false">Автоматическое переключение профилей между динамиком, Bluetooth-наушниками и USB-ЦАП. Быстрое управление кнопками −10% / +10%.</string>
     <string name="onb_title_4">Необходимые разрешения</string>
     <string name="onb_desc_4">Разрешите уведомления (для шторки и острова), доступ к Bluetooth (для чтения модели наушников) и захват аудио (для спектра и PCM DSP).</string>
+    <string name="onb_by_author_fmt">by %1$s</string>
     <string name="onb_step_fmt">Шаг %1$d из %2$d</string>
     <string name="onb_back">Назад</string>
     <string name="onb_next">Далее</string>

@@ -1,18 +1,15 @@
 package com.example.volumeboost.viewmodel
 
 import android.app.Application
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.volumeboost.R
 import com.example.volumeboost.data.BoostMode
 import com.example.volumeboost.data.BoostScaleMapper
 import com.example.volumeboost.data.CustomEqPreset
@@ -25,8 +22,8 @@ import com.example.volumeboost.device.DeviceProfileDetector
 import com.example.volumeboost.device.FeatureRegistry
 import com.example.volumeboost.device.OsOverrideOption
 import com.example.volumeboost.service.AudioBoosterService
+import com.example.volumeboost.util.AppInfo
 import com.example.volumeboost.util.LocaleHelper
-import com.example.volumeboost.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -40,7 +37,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val CURRENT_APP_VERSION_CODE = 6
+private const val CURRENT_APP_VERSION_CODE = 7
 
 data class ConnectedAudioDeviceInfo(
     val id: String,
@@ -58,7 +55,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val settings = repo.settingsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, GlobalSettings())
     val runtimeState = AudioBoosterService.runtimeState
 
-    // 5 вкладок нижней навигации: 0=Главная, 1=Эквалайзер, 2=Устройства, 3=Система, 4=Настройки
     private val _selectedTabIndex = MutableStateFlow(0)
     val selectedTabIndex = _selectedTabIndex.asStateFlow()
 
@@ -70,7 +66,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val _connectedDevice = MutableStateFlow(
-        ConnectedAudioDeviceInfo("SPEAKER", "Встроенные динамики", "SPEAKER", "Встроенный стерео ЦАП • 48 кГц")
+        ConnectedAudioDeviceInfo("SPEAKER", "Built-in Speaker", "SPEAKER", "48 kHz")
     )
     val connectedDevice = _connectedDevice.asStateFlow()
 
@@ -92,7 +88,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
         detectAndApplyDeviceProfile(fromHardwareCallback = false)
 
-        // Синхронизируем ползунок и профиль устройства при нажатии −10% / +10% из Суперострова или виджета
         viewModelScope.launch {
             runtimeState.collect { rt ->
                 if (rt.isRunning && _boostPercent.value != rt.currentBoostPercent) {
@@ -136,45 +131,46 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
         }
 
-        val speakerLabel = "Динамики ${Build.MODEL ?: "устройства"}"
+        val outSr = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull() ?: 48000
+        val fpb = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull() ?: 256
+        val bufferMs = "%.1f".format((fpb * 1000f) / outSr.coerceAtLeast(8000))
+        val locCtx = LocaleHelper.getLocalizedContext(context, settings.value.languageCode)
+
         val detected = when {
             bt != null -> {
-                val productName = bt.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth Аудио"
-                val sr = bt.sampleRates.maxOrNull() ?: 48000
-                val outSr = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull() ?: sr
-                val fpb = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull() ?: 256
-                val bufferMs = "%.1f".format((fpb * 1000f) / outSr.coerceAtLeast(8000))
+                val productName = bt.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth Audio"
                 val profileType = if (bt.type == AudioDeviceInfo.TYPE_BLE_HEADSET) "BLE Audio" else "Bluetooth A2DP"
                 ConnectedAudioDeviceInfo(
                     id = "BT_${productName.uppercase()}",
                     name = productName,
                     type = "BLUETOOTH",
-                    codecAndLatencyHint = "$profileType • ${outSr / 1000} кГц • Буфер ЦАП $bufferMs мс ($fpb фр.)"
+                    codecAndLatencyHint = locCtx.getString(R.string.dev_dac_buffer_fmt, profileType, outSr / 1000, bufferMs, fpb)
                 )
             }
             usb != null -> {
-                val productName = usb.productName?.toString()?.takeIf { it.isNotBlank() } ?: "USB-C ЦАП"
+                val productName = usb.productName?.toString()?.takeIf { it.isNotBlank() } ?: "USB DAC"
                 ConnectedAudioDeviceInfo(
                     id = "USB_${productName.uppercase()}",
                     name = productName,
                     type = "USB",
-                    codecAndLatencyHint = "Цифровой USB Hi-Res • Задержка <15 мс"
+                    codecAndLatencyHint = locCtx.getString(R.string.dev_dac_buffer_fmt, "USB Hi-Res", outSr / 1000, bufferMs, fpb)
                 )
             }
             wired != null -> {
                 ConnectedAudioDeviceInfo(
                     id = "WIRED_HEADSET",
-                    name = "Проводные наушники",
+                    name = locCtx.getString(R.string.dev_type_wired),
                     type = "WIRED",
-                    codecAndLatencyHint = "Аналоговая линия • Задержка 0 мс"
+                    codecAndLatencyHint = locCtx.getString(R.string.dev_dac_buffer_fmt, "AUX", outSr / 1000, bufferMs, fpb)
                 )
             }
             else -> {
+                val speakerLabel = "${locCtx.getString(R.string.dev_type_speaker)} (${Build.MODEL ?: "Device"})"
                 ConnectedAudioDeviceInfo(
                     id = "SPEAKER",
                     name = speakerLabel,
                     type = "SPEAKER",
-                    codecAndLatencyHint = "Встроенные стереодинамики • 48 кГц"
+                    codecAndLatencyHint = locCtx.getString(R.string.dev_dac_buffer_fmt, "Internal DAC", outSr / 1000, bufferMs, fpb)
                 )
             }
         }
@@ -495,18 +491,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         })
     }
 
-    fun setAppLanguage(langCode: String) {
-        update { it.copy(languageCode = langCode) }
-        LocaleHelper.applyAppLocale(langCode)
-    }
-
     fun triggerAudioEffectsTest() {
         context.startService(Intent(context, AudioBoosterService::class.java).apply {
             action = AudioBoosterService.ACTION_TEST_AUDIO_EFFECTS
         })
     }
 
-
+    fun setAppLanguage(langCode: String) {
+        update { it.copy(languageCode = langCode) }
+        LocaleHelper.applyAppLocale(langCode)
+    }
 
     fun resetSettings() {
         viewModelScope.launch {
@@ -532,31 +526,34 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val hw = p.hardwareSpecs
         val plan = FeatureRegistry.resolvePlan(p, s.islandRoutingPreference, s.powerSaveGlass)
         val maxCap = BoostScaleMapper.maxAllowedPercent(s.unlimitedBoostEnabled)
-        val modeRu = if (r.activeMode == BoostMode.STANDARD) "Мягкий (Session 0)" else "Захват звука (MediaProjection)"
+        val isRu = LocaleHelper.isRussianActive(context, s.languageCode)
+        val modeLabel = if (r.activeMode == BoostMode.STANDARD) "Session 0" else "MediaProjection PCM DSP"
         val activePresenter = r.activeIslandTier.ifBlank { s.lastActiveIslandTier }
         val lastErr = r.lastIslandError.ifBlank { s.lastIslandError }
 
         return buildString {
-            appendLine("=== Профиль устройства (HyperBoost v6.0) ===")
-            appendLine("Устройство: ${p.brand} ${p.model} (производитель: ${p.vendor}, код: ${p.deviceCodename})")
-            appendLine("Оболочка: ${p.osFamily.displayNameRu} (${p.osVersion}) • Регион: ${p.romRegion}")
-            appendLine("Android: ${p.androidRelease} • API ${p.apiLevel} (Полный: ${p.apiLevelFullFormatted}) • Патч: ${p.securityPatch}")
-            appendLine("Сборка: ${p.displayBuildId} • Кастомный ROM: ${if (p.isLikelyCustomRom) "Да" else "Нет"}")
-            appendLine("Уверенность: ${p.confidence.labelRu}")
+            appendLine("=== ${AppInfo.reportHeaderLine()} ===")
+            appendLine("Repository: ${AppInfo.REPO_URL}")
+            appendLine("Device: ${p.brand} ${p.model} (vendor: ${p.vendor}, codename: ${p.deviceCodename})")
+            appendLine("OS: ${if (isRu) p.osFamily.displayNameRu else p.osFamily.displayNameEn} (${p.osVersion}) • Region: ${p.romRegion}")
+            appendLine("Android: ${p.androidRelease} • API ${p.apiLevel} (Full: ${p.apiLevelFullFormatted}) • Patch: ${p.securityPatch}")
+            appendLine("Build: ${p.displayBuildId} • Custom ROM: ${p.isLikelyCustomRom}")
+            appendLine("Confidence: ${if (isRu) p.confidence.labelRu else p.confidence.labelEn}")
             appendLine()
-            appendLine("=== Железо и Аудио HAL ===")
-            appendLine("SoC: ${hw.socManufacturer} ${hw.socModel} (${hw.cpuCores} ядер) • ОЗУ: ${hw.availableRamMb}/${hw.totalRamMb} МБ")
-            appendLine("Дисплей: ${hw.screenResolutionPx} (${hw.screenDensityDpi} dpi, ${hw.refreshRateHz} Гц) • Вырез: ${p.cutoutStatus.labelRu}")
-            appendLine("Аудио HAL: ${hw.nativeSampleRateHz} Гц, буфер ${hw.framesPerBuffer} фр. • LowLatency: ${hw.hasLowLatencyAudio}")
-            appendLine("Метод усиления: $modeRu (${r.currentBoostPercent}% / потолок $maxCap%)")
-            appendLine("Эффекты: ${r.supportedEffectsSummary}")
+            appendLine("=== Hardware & Audio HAL ===")
+            appendLine("SoC: ${hw.socManufacturer} ${hw.socModel} (${hw.cpuCores} cores) • RAM: ${hw.availableRamMb}/${hw.totalRamMb} MB")
+            appendLine("Display: ${hw.screenResolutionPx} (${hw.screenDensityDpi} dpi, ${hw.refreshRateHz} Hz) • Cutout: ${p.cutoutStatus.name}")
+            appendLine("Audio HAL: ${hw.nativeSampleRateHz} Hz, ${hw.framesPerBuffer} frames/buf • LowLatency: ${hw.hasLowLatencyAudio}")
+            appendLine("Boost Mode: $modeLabel (${r.currentBoostPercent}% / cap $maxCap%)")
+            appendLine("Effects: ${r.supportedEffectsSummary}")
+            appendLine("Bass Route: ${r.activeBassRoute.name} | Surround Route: ${r.activeVirtualizerRoute.name}")
             appendLine()
-            appendLine("=== Суперостров и Уведомления ===")
-            appendLine("Стратегия: ${plan.selectedIslandStrategy.titleRu}")
-            appendLine("Активный презентер: $activePresenter")
-            appendLine("Фокусные уведомления: ${p.focusNotificationStatus.labelRu}")
-            appendLine("Последний статус: $lastErr")
-            appendLine("Сигналы (${p.matchedSignals.size}): ${p.matchedSignals.joinToString(", ")}")
+            appendLine("=== Super Island & Notifications ===")
+            appendLine("Strategy: ${if (isRu) plan.selectedIslandStrategy.titleRu else plan.selectedIslandStrategy.titleEn}")
+            appendLine("Active Presenter: $activePresenter")
+            appendLine("Focus Notifications: ${p.focusNotificationStatus.name}")
+            appendLine("Last Status: $lastErr")
+            appendLine("Signals (${p.matchedSignals.size}): ${p.matchedSignals.joinToString(", ")}")
         }
     }
 }

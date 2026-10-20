@@ -66,3 +66,7 @@ If you test HyperBoost on another phone, open the **System** tab, tap **Copy Rep
 4. To verify the download on Linux before installing:
    ```bash
    sha256sum -c HyperBoost-v1.3.0.apk.sha256
+
+## Author
+
+Made by [MrQuster](https://github.com/MrQuster).
