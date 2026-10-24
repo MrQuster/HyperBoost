@@ -276,4 +276,35 @@
     <string name="onb_start">Начать работу</string>
 
     <string name="notif_channel_name">Суперостров и служба HyperBoost</string>
+
+    <!-- Widget -->
+    <string name="widget_btn_on">Вкл</string>
+    <string name="widget_btn_off">Выкл</string>
+    <string name="widget_status_off_fmt">Выкл (%1$d%%)</string>
+
+    <!-- Home Screen -->
+    <string name="home_status_idle">Усилитель в режиме ожидания</string>
+    <string name="home_mode_standard">Системный тракт</string>
+    <string name="home_mode_capture">Прямой захват DSP</string>
+    <string name="home_signal_level_title">Уровень сигнала и пиков</string>
+    <string name="home_peak_fmt">Пик: %1$d%%</string>
+    <string name="home_rms_fmt">RMS мощность: %1$d%%</string>
+    <string name="home_timer_off">Выкл</string>
+    <string name="home_timer_unit_min">%1$dм</string>
+
+    <!-- Super Island State Labels -->
+    <string name="sys_cpu_cores">Ядра CPU</string>
+    <string name="sys_btn_notifications">Уведомления</string>
+    <string name="sys_btn_copy_log">Скопировать журнал</string>
+    <string name="sys_btn_clear">Очистить</string>
+    <string name="sys_btn_rescan">Пересканировать</string>
+    <string name="sys_signals_read">Прочитанные сигналы:\n</string>
+    <string name="sys_props_empty">Свойства с пустым ответом / закрытые SELinux:\n</string>
+    <string name="sys_share_json_chooser">Поделиться JSON профилем</string>
+    <string name="sys_toast_selftest_started">Запущен 5-шаговый самотест острова...</string>
+    <string name="sys_toast_log_copied">Журнал острова скопирован</string>
+    <string name="sys_toast_rescanned">Система пересканирована в фоновом потоке</string>
+    <string name="sys_toast_report_copied">Отчёт скопирован в буфер обмена</string>
+    <string name="sys_hdr_supported">Поддерживается</string>
+    <string name="sys_hdr_unsupported">Нет</string>
 </resources>

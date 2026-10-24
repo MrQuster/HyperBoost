@@ -55,18 +55,21 @@ fun HomeScreen(
     }
 
     // Честный расчёт реального акустического усиления в дБ: 20 * log10(boost / 100)
-    val statusSubtitle = remember(runtime.isRunning, runtime.activeMode, boostPercent) {
+    val statusIdleText = stringResource(R.string.home_status_idle)
+    val modeStdText = stringResource(R.string.home_mode_standard)
+    val modeCapText = stringResource(R.string.home_mode_capture)
+    val statusSubtitle = remember(runtime.isRunning, runtime.activeMode, boostPercent, statusIdleText, modeStdText, modeCapText) {
         if (!runtime.isRunning) {
-            "Усилитель в режиме ожидания"
+            statusIdleText
         } else {
             val multiplier = (boostPercent / 100f).coerceAtLeast(0.01f)
             val acousticDb = if (boostPercent <= 100) 0f else (20f * log10(multiplier))
             val modePrefix = if (runtime.activeMode == BoostMode.STANDARD) {
-                "Системный тракт"
+                modeStdText
             } else {
-                "Прямой захват DSP"
+                modeCapText
             }
-            "$modePrefix • ${"%.2f".format(multiplier)}x (+${"%.1f".format(acousticDb)} дБ)"
+            "$modePrefix • ${"%.2f".format(multiplier)}x (+${"%.1f".format(acousticDb)} dB)"
         }
     }
 
@@ -208,7 +211,7 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Уровень сигнала и пиков",
+                        text = stringResource(R.string.home_signal_level_title),
                         color = tokens.textPrimary,
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp,
@@ -223,7 +226,7 @@ fun HomeScreen(
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "Пик: ${(runtime.peakSignal * 100).toInt()}%",
+                            text = stringResource(R.string.home_peak_fmt, (runtime.peakSignal * 100).toInt()),
                             color = tokens.accentColor,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -326,7 +329,13 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    listOf(0 to "Выкл", 15 to "15м", 30 to "30м", 60 to "60м").forEach { (mins, label) ->
+                    val timerOffText = stringResource(R.string.home_timer_off)
+                    listOf(
+                        0 to timerOffText,
+                        15 to stringResource(R.string.home_timer_unit_min, 15),
+                        30 to stringResource(R.string.home_timer_unit_min, 30),
+                        60 to stringResource(R.string.home_timer_unit_min, 60)
+                    ).forEach { (mins, label) ->
                         GlassChip(
                             label = label,
                             selected = (mins == 0 && runtime.sleepTimerRemainingSec == 0),
@@ -415,7 +424,7 @@ private fun RealTimeSignalBarsCanvas(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "RMS мощность: ${(rmsSignal * 100).toInt()}%",
+                text = stringResource(R.string.home_rms_fmt, (rmsSignal * 100).toInt()),
                 color = tokens.textSecondary,
                 fontSize = 11.5.sp
             )

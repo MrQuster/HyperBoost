@@ -55,7 +55,7 @@ object MiuiSuperIslandJsonBuilder {
     private const val COLOR_SUBTEXT_HEX = "#B8C4D9"
     private const val COLOR_IDLE_HEX = "#64748B"
 
-    fun buildAndValidateFocusParamJson(snapshot: IslandSnapshot): ValidatedIslandJson {
+    fun buildAndValidateFocusParamJson(snapshot: IslandSnapshot, context: Context? = null): ValidatedIslandJson {
         return runCatching {
             val fraction = BoostScaleMapper.percentToFraction(snapshot.boostPercent, snapshot.unlimitedMode)
             val progress100 = (fraction * 100f).roundToInt().coerceIn(0, 100)
@@ -66,11 +66,12 @@ object MiuiSuperIslandJsonBuilder {
             }
 
             // Ограничиваем длину имени устройства, чтобы избежать обрезки и переполнения буфера острова
+            val defaultSpeaker = context?.getString(R.string.dev_type_speaker) ?: "Speaker"
             val safeDeviceName = snapshot.deviceName
                 .replace("\n", " ")
                 .trim()
                 .take(26)
-                .ifEmpty { "Динамик" }
+                .ifEmpty { defaultSpeaker }
 
             val shortLevelText = if (snapshot.styleMode == IslandStyleMode.ICON_ONLY) {
                 ""
@@ -79,9 +80,9 @@ object MiuiSuperIslandJsonBuilder {
             }
 
             val playStateLabel = when {
-                !snapshot.isRunning -> "ВЫКЛ"
-                snapshot.isMusicPlaying -> "ИГРАЕТ"
-                else -> "ОЖИДАНИЕ"
+                !snapshot.isRunning -> context?.getString(R.string.island_state_off) ?: "OFF"
+                snapshot.isMusicPlaying -> context?.getString(R.string.island_state_playing) ?: "PLAYING"
+                else -> context?.getString(R.string.island_state_idle) ?: "STANDBY"
             }
             val expandedSubtitle = "$safeDeviceName (${snapshot.deviceTypeTag}) • $playStateLabel"
 
@@ -190,7 +191,7 @@ object MiuiSuperIslandJsonBuilder {
         snapshot: IslandSnapshot,
         actionIntents: IslandPendingIntents
     ): ValidatedIslandJson {
-        val validated = buildAndValidateFocusParamJson(snapshot)
+        val validated = buildAndValidateFocusParamJson(snapshot, context)
         if (validated.isValid) {
             extras.putString(EXTRA_MIUI_FOCUS_PARAM, validated.jsonString)
         }

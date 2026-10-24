@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -26,11 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.volumeboost.R
 import com.example.volumeboost.device.*
 import com.example.volumeboost.island.IslandEventLogger
 import com.example.volumeboost.ui.components.GlassButton
@@ -88,7 +91,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Производитель: ${profile.vendor} • Код: ${profile.deviceCodename}",
+                            text = stringResource(R.string.sys_manufacturer_codename_fmt, profile.vendor, profile.deviceCodename),
                             color = tokens.textSecondary,
                             fontSize = 12.5.sp
                         )
@@ -107,7 +110,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                                 .background(tokens.accentColor.copy(alpha = 0.22f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Memory, contentDescription = "Устройство", tint = tokens.accentColor)
+                            Icon(Icons.Default.Memory, contentDescription = stringResource(R.string.nav_system), tint = tokens.accentColor)
                         }
                     }
                 }
@@ -117,7 +120,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     BadgePill(
-                        text = "${profile.osFamily.displayNameRu} (${profile.osVersion})",
+                        text = "${if (isEn) profile.osFamily.displayNameEn else profile.osFamily.displayNameRu} (${profile.osVersion})",
                         accent = tokens.accentColor
                     )
                     BadgePill(
@@ -131,48 +134,51 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Уверенность: ${if (isEn) profile.confidence.labelEn else profile.confidence.labelRu}",
+                        text = stringResource(R.string.sys_confidence_fmt, if (isEn) profile.confidence.labelEn else profile.confidence.labelRu),
                         color = tokens.textSecondary,
                         fontSize = 12.sp
                     )
                     if (profile.isManualOverride) {
-                        BadgePill(text = "РУЧНОЙ РЕЖИМ", accent = Color(0xFFFF9E00))
+                        BadgePill(text = stringResource(R.string.sys_manual_badge), accent = Color(0xFFFF9E00))
                     }
                 }
             }
         }
 
         // 2. Секция «Система»
-        SysSectionTitle("Система и прошивка")
+        SysSectionTitle(stringResource(R.string.sys_sec_os))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                KeyValueRow("Оболочка ОС", "${profile.osFamily.displayNameRu} (${profile.osVersion})")
-                KeyValueRow("Регион прошивки", profile.romRegion)
-                KeyValueRow("Версия Android", "${profile.androidRelease} (API ${profile.apiLevel} / Полный ${profile.apiLevelFullFormatted})")
-                KeyValueRow("Патч безопасности", profile.securityPatch)
-                KeyValueRow("Номер сборки", profile.displayBuildId)
+                KeyValueRow(stringResource(R.string.sys_os_family), "${if (isEn) profile.osFamily.displayNameEn else profile.osFamily.displayNameRu} (${profile.osVersion})")
+                KeyValueRow(stringResource(R.string.sys_rom_region), profile.romRegion)
+                KeyValueRow(stringResource(R.string.sys_android_ver), "${profile.androidRelease} (API ${profile.apiLevel} / ${profile.apiLevelFullFormatted})")
+                KeyValueRow(stringResource(R.string.sys_sec_patch), profile.securityPatch)
+                KeyValueRow(stringResource(R.string.sys_build_id), profile.displayBuildId)
                 KeyValueRow(
-                    "Статус целостности ROM",
-                    if (profile.isLikelyCustomRom) "Признаки кастомной AOSP прошивки" else "Штатная вендорная прошивка"
+                    stringResource(R.string.sys_rom_integrity),
+                    if (profile.isLikelyCustomRom) stringResource(R.string.sys_rom_custom) else stringResource(R.string.sys_rom_stock)
                 )
             }
         }
 
         // 3. Секция «Железо и экран»
-        SysSectionTitle("Аппаратная платформа и дисплей")
+        SysSectionTitle(stringResource(R.string.sys_sec_hw))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             val hw = profile.hardwareSpecs
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                KeyValueRow("Процессор (SoC)", "${hw.socManufacturer} ${hw.socModel} (${hw.hardwareBoard})")
-                KeyValueRow("Ядра CPU", "${hw.cpuCores} ядер")
+                KeyValueRow(stringResource(R.string.sys_soc), "${hw.socManufacturer} ${hw.socModel} (${hw.hardwareBoard})")
+                KeyValueRow(stringResource(R.string.sys_cpu_cores), stringResource(R.string.sys_cpu_cores_fmt, hw.cpuCores))
                 KeyValueRow(
-                    "Оперативная память (ОЗУ)",
-                    if (hw.totalRamMb > 0) "Свободно ${hw.availableRamMb} МБ из ${hw.totalRamMb} МБ" else "Неизвестно"
+                    stringResource(R.string.sys_ram),
+                    if (hw.totalRamMb > 0) stringResource(R.string.sys_ram_fmt, hw.availableRamMb, hw.totalRamMb) else stringResource(R.string.unknown)
                 )
-                KeyValueRow("Экран и плотность", "${hw.screenResolutionPx} • ${hw.screenDensityDpi} dpi (${profile.smallestScreenWidthDp}dp)")
-                KeyValueRow("Частота и HDR", "${hw.refreshRateHz} Гц • HDR: ${if (hw.hdrSupported) "Поддерживается" else "Нет"}")
-                KeyValueRow("Форм-фактор", if (isEn) profile.formFactor.labelEn else profile.formFactor.labelRu)
-                KeyValueRow("Вырез камеры (Cutout)", "${profile.cutoutStatus.symbol} ${profile.cutoutStatus.labelRu}")
+                KeyValueRow(stringResource(R.string.sys_screen), "${hw.screenResolutionPx} • ${hw.screenDensityDpi} dpi (${profile.smallestScreenWidthDp}dp)")
+                KeyValueRow(
+                    stringResource(R.string.sys_refresh_hdr),
+                    "${hw.refreshRateHz} Hz • HDR: ${if (hw.hdrSupported) stringResource(R.string.sys_hdr_supported) else stringResource(R.string.sys_hdr_unsupported)}"
+                )
+                KeyValueRow(stringResource(R.string.sys_form_factor), if (isEn) profile.formFactor.labelEn else profile.formFactor.labelRu)
+                KeyValueRow(stringResource(R.string.sys_cutout), "${profile.cutoutStatus.symbol} ${if (isEn) profile.cutoutStatus.labelEn else profile.cutoutStatus.labelRu}")
             }
         }
 
@@ -248,31 +254,31 @@ fun SystemScreen(viewModel: SettingsViewModel) {
         }
 
         // 5. Секция «Уведомления, Суперостров и Журнал самопроверки»
-        SysSectionTitle("Суперостров: Самопроверка и Журнал событий")
+        SysSectionTitle(stringResource(R.string.sys_sec_island))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                KeyValueRow("Выбранная стратегия", plan.selectedIslandStrategy.titleRu)
-                KeyValueRow("Активный презентер", runtime.activeIslandTier.ifBlank { settings.lastActiveIslandTier })
-                KeyValueRow("Причина выбора", runtime.islandSelectionReason.ifBlank { plan.islandSelectionReasonRu })
-                KeyValueRow("Статус фокусных уведомлений", "${profile.focusNotificationStatus.symbol} ${profile.focusNotificationStatus.labelRu}")
-                KeyValueRow("Последний пакет острова", "Seq #${runtime.lastIslandSequenceId} • ${runtime.lastIslandError.ifBlank { settings.lastIslandError }}")
+                KeyValueRow(stringResource(R.string.sys_island_strategy), if (isEn) plan.selectedIslandStrategy.titleEn else plan.selectedIslandStrategy.titleRu)
+                KeyValueRow(stringResource(R.string.sys_island_presenter), runtime.activeIslandTier.ifBlank { settings.lastActiveIslandTier })
+                KeyValueRow(stringResource(R.string.sys_island_reason), runtime.islandSelectionReason.ifBlank { plan.islandSelectionReasonRu })
+                KeyValueRow(stringResource(R.string.sys_island_focus_status), "${profile.focusNotificationStatus.symbol} ${if (isEn) profile.focusNotificationStatus.labelEn else profile.focusNotificationStatus.labelRu}")
+                KeyValueRow(stringResource(R.string.sys_island_last_pkt), "Seq #${runtime.lastIslandSequenceId} • ${runtime.lastIslandError.ifBlank { settings.lastIslandError }}")
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     GlassButton(
-                        text = "Самотест острова",
-                        icon = Icons.Default.FactCheck,
+                        text = stringResource(R.string.sys_btn_island_selftest),
+                        icon = Icons.AutoMirrored.Filled.FactCheck,
                         isAccent = true,
                         onClick = {
                             viewModel.triggerIslandPreview()
-                            Toast.makeText(context, "Запущен 5-шаговый самотест острова...", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.sys_toast_selftest_started), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f)
                     )
                     GlassButton(
-                        text = "Уведомления",
+                        text = stringResource(R.string.sys_btn_notifications),
                         icon = Icons.Default.NotificationsActive,
                         onClick = {
                             VendorBackgroundGuide.executeActionSafely(
@@ -296,7 +302,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(
-                            text = "Результат самопроверки острова:",
+                            text = stringResource(R.string.sys_island_selftest_header),
                             color = tokens.accentColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
@@ -331,14 +337,14 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Журнал событий острова (${islandLogs.size} / 100)",
+                        text = stringResource(R.string.sys_island_log_title_fmt, islandLogs.size),
                         color = tokens.textPrimary,
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.5.sp
                     )
                     Icon(
                         imageVector = if (showIslandLogExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = "Раскрыть журнал острова",
+                        contentDescription = stringResource(R.string.sys_island_log_title_fmt, islandLogs.size),
                         tint = tokens.accentColor
                     )
                 }
@@ -353,7 +359,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                                 .padding(10.dp)
                         ) {
                             Text(
-                                text = if (islandLogs.isEmpty()) "Событий пока нет. Нажмите «Самотест острова» или включите усиление."
+                                text = if (islandLogs.isEmpty()) stringResource(R.string.sys_island_log_empty)
                                 else islandLogs.take(25).joinToString("\n") { e ->
                                     "${e.formattedTime} ${if (e.isSuccess) "✓" else "✗"} [#${e.seqId}] ${e.action} (${e.boostPercent}%, ${e.jsonSizeBytes}B): ${e.detail}"
                                 },
@@ -369,17 +375,17 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             GlassButton(
-                                text = "Скопировать журнал",
+                                text = stringResource(R.string.sys_btn_copy_log),
                                 icon = Icons.Default.ContentCopy,
                                 onClick = {
                                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     cm.setPrimaryClip(ClipData.newPlainText("Island Log", IslandEventLogger.formatAsPlainText()))
-                                    Toast.makeText(context, "Журнал острова скопирован", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.sys_toast_log_copied), Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier.weight(1f)
                             )
                             GlassButton(
-                                text = "Очистить",
+                                text = stringResource(R.string.sys_btn_clear),
                                 icon = Icons.Default.DeleteSweep,
                                 isDanger = true,
                                 onClick = { IslandEventLogger.clear() },
@@ -392,7 +398,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
         }
 
         // 6. Секция «Матрица возможностей (Capabilities)»
-        SysSectionTitle("Матрица возможностей (${profile.capabilities.size} активно)")
+        SysSectionTitle(stringResource(R.string.sys_sec_caps_fmt, profile.capabilities.size))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 profile.capabilityEvaluations.forEachIndexed { idx, ev ->
@@ -444,7 +450,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
         }
 
         // 7. Секция «Сигналы определения и системные свойства»
-        SysSectionTitle("Сигналы детектора и свойства getprop")
+        SysSectionTitle(stringResource(R.string.sys_sec_signals))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
@@ -456,7 +462,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Совпавших сигналов: ${profile.matchedSignals.size} • Недоступных свойств: ${profile.unreadableProperties.size}",
+                        text = stringResource(R.string.sys_signals_summary_fmt, profile.matchedSignals.size, profile.unreadableProperties.size),
                         color = tokens.textPrimary,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
@@ -464,7 +470,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     )
                     Icon(
                         imageVector = if (showSignalsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = "Раскрыть список свойств",
+                        contentDescription = stringResource(R.string.sys_sec_signals),
                         tint = tokens.accentColor
                     )
                 }
@@ -472,14 +478,14 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                 AnimatedVisibility(visible = showSignalsExpanded) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "Прочитанные сигналы:\n" + profile.matchedSignals.joinToString("\n") { " • $it" },
+                            text = stringResource(R.string.sys_signals_read) + profile.matchedSignals.joinToString("\n") { " • $it" },
                             color = tokens.accentColor,
                             fontSize = 11.5.sp,
                             fontFamily = FontFamily.Monospace
                         )
                         if (profile.unreadableProperties.isNotEmpty()) {
                             Text(
-                                text = "Свойства с пустым ответом / закрытые SELinux:\n" +
+                                text = stringResource(R.string.sys_props_empty) +
                                     profile.unreadableProperties.joinToString(", "),
                                 color = tokens.textSecondary,
                                 fontSize = 11.sp,
@@ -492,7 +498,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
         }
 
         // 8. Секция «Управление профилем и экспорт отчёта»
-        SysSectionTitle("Управление определением и экспорт")
+        SysSectionTitle(stringResource(R.string.sys_sec_manage))
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
@@ -505,7 +511,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Режим определения ОС",
+                            text = stringResource(R.string.sys_override_mode_label),
                             color = tokens.textPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
@@ -518,7 +524,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     }
                     Icon(
                         imageVector = if (showOverridePicker) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = "Выбрать режим ОС",
+                        contentDescription = stringResource(R.string.sys_override_mode_label),
                         tint = tokens.textSecondary
                     )
                 }
@@ -544,30 +550,30 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     GlassButton(
-                        text = "Пересканировать",
+                        text = stringResource(R.string.sys_btn_rescan),
                         icon = Icons.Default.Refresh,
                         onClick = {
                             viewModel.rescanDeviceProfile(settings.osOverrideOption)
-                            Toast.makeText(context, "Система пересканирована в фоновом потоке", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.sys_toast_rescanned), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f)
                     )
                     GlassButton(
-                        text = "Скопировать отчёт",
+                        text = stringResource(R.string.sys_btn_copy_report),
                         icon = Icons.Default.ContentCopy,
                         isAccent = true,
                         onClick = {
                             val report = viewModel.buildDiagnosticReport()
                             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             cm.setPrimaryClip(ClipData.newPlainText("HyperBoost System Report", report))
-                            Toast.makeText(context, "Отчёт скопирован в буфер обмена", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, context.getString(R.string.sys_toast_report_copied), Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f)
                     )
                 }
 
                 GlassButton(
-                    text = "Поделиться JSON профилем устройства",
+                    text = stringResource(R.string.sys_btn_share_json),
                     icon = Icons.Default.Share,
                     onClick = {
                         val json = profile.toJsonString()
@@ -576,7 +582,7 @@ fun SystemScreen(viewModel: SettingsViewModel) {
                             putExtra(Intent.EXTRA_TEXT, json)
                             putExtra(Intent.EXTRA_TITLE, "DeviceProfile_${profile.model}.json")
                         }
-                        context.startActivity(Intent.createChooser(sendIntent, "Поделиться JSON"))
+                        context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.sys_share_json_chooser)))
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
