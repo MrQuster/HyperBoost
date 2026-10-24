@@ -1,4 +1,3 @@
-```markdown
 <div align="center">
   <img src="docs/icon-512.png" width="112" height="112" alt="HyperBoost icon" />
   <h1>HyperBoost</h1>
