@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +45,7 @@ fun HomeScreen(
     onRequestStartEngine: (BoostMode) -> Unit
 ) {
     val tokens = LocalGlassTokens.current
+    val context = LocalContext.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val runtime by viewModel.runtimeState.collectAsStateWithLifecycle()
     val device by viewModel.connectedDevice.collectAsStateWithLifecycle()
@@ -56,20 +58,19 @@ fun HomeScreen(
 
     // Честный расчёт реального акустического усиления в дБ: 20 * log10(boost / 100)
     val statusIdleText = stringResource(R.string.home_status_idle)
-    val modeStdText = stringResource(R.string.home_mode_standard)
-    val modeCapText = stringResource(R.string.home_mode_capture)
-    val statusSubtitle = remember(runtime.isRunning, runtime.activeMode, boostPercent, statusIdleText, modeStdText, modeCapText) {
+    val statusSubtitle = remember(runtime.isRunning, runtime.activeMode, boostPercent, statusIdleText) {
         if (!runtime.isRunning) {
             statusIdleText
         } else {
             val multiplier = (boostPercent / 100f).coerceAtLeast(0.01f)
             val acousticDb = if (boostPercent <= 100) 0f else (20f * log10(multiplier))
-            val modePrefix = if (runtime.activeMode == BoostMode.STANDARD) {
-                modeStdText
+            val multStr = "%.2f".format(multiplier)
+            val dbStr = "%.1f".format(acousticDb)
+            if (runtime.activeMode == BoostMode.STANDARD) {
+                context.getString(R.string.status_active_soft_fmt, multStr, dbStr)
             } else {
-                modeCapText
+                context.getString(R.string.status_active_capture_fmt, multStr, dbStr)
             }
-            "$modePrefix • ${"%.2f".format(multiplier)}x (+${"%.1f".format(acousticDb)} dB)"
         }
     }
 
@@ -318,7 +319,11 @@ fun HomeScreen(
                     )
                     if (runtime.sleepTimerRemainingSec > 0) {
                         Text(
-                            text = "${runtime.sleepTimerRemainingSec / 60} мин ${runtime.sleepTimerRemainingSec % 60} с",
+                            text = stringResource(
+                                R.string.sleep_timer_remaining_fmt,
+                                runtime.sleepTimerRemainingSec / 60,
+                                runtime.sleepTimerRemainingSec % 60
+                            ),
                             color = tokens.accentColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp

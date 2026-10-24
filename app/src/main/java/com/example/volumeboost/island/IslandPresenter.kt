@@ -208,7 +208,7 @@ class LiveUpdatePresenter : IslandPresenter {
 }
 
 class ClassicNotificationPresenter : IslandPresenter {
-    override val presenterName: String = "ClassicNotificationPresenter (Универсальная шторка)"
+    override val presenterName: String = "ClassicNotificationPresenter"
 
     override fun isSupported(context: Context): Boolean = true
 

@@ -79,8 +79,9 @@ object MiuiSuperIslandJsonBuilder {
                 "${snapshot.boostPercent}%"
             }
 
+            val offLabel = context?.getString(R.string.island_state_off) ?: "OFF"
             val playStateLabel = when {
-                !snapshot.isRunning -> context?.getString(R.string.island_state_off) ?: "OFF"
+                !snapshot.isRunning -> offLabel
                 snapshot.isMusicPlaying -> context?.getString(R.string.island_state_playing) ?: "PLAYING"
                 else -> context?.getString(R.string.island_state_idle) ?: "STANDBY"
             }
@@ -135,7 +136,7 @@ object MiuiSuperIslandJsonBuilder {
                     put("colorTitle", "#FFFFFF")
                     put("content", expandedSubtitle)
                     put("colorContent", COLOR_SUBTEXT_HEX)
-                    put("subContent", if (snapshot.isRunning) snapshot.modeLabel else "ВЫКЛ")
+                    put("subContent", if (snapshot.isRunning) snapshot.modeLabel else offLabel)
                     put("colorSubContent", activeColor)
                     put("bgColor", COLOR_ISLAND_BG)
                 })

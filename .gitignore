@@ -12,3 +12,4 @@ keystore.properties
 *.aab
 *.ap_
 *.dex
+docs/agent/logs/

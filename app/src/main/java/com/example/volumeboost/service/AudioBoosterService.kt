@@ -391,7 +391,7 @@ class AudioBoosterService : Service() {
             checks.add(
                 SelfTestCheckItem(
                     stepTitle = "2. Build & Validate JSON",
-                    passed = testBuild140.errorSummary == "OK" || testBuild140.errorSummary == "Нет ошибок",
+                    passed = testBuild140.jsonSizeBytes > 0 && !testBuild140.errorSummary.contains("ERROR", ignoreCase = true),
                     explanation = "${testBuild140.activeTierName} (${testBuild140.jsonSizeBytes}B, miui.focus.param=$hasFocusParam)"
                 )
             )
