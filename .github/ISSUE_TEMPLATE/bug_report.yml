@@ -1,0 +1,51 @@
+name: 🐛 Сообщить об ошибке (Bug Report)
+description: Сообщить о баге или сбое в работе HyperBoost
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Спасибо за сообщение о проблеме! Пожалуйста, заполните форму ниже.
+  - type: input
+    id: version
+    attributes:
+      label: Версия приложения (App Version)
+      placeholder: "Например: 1.4.0 (см. Настройки -> О приложении)"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Модель устройства (Device Model)
+      placeholder: "Например: Xiaomi 17T Pro, POCO F5, Samsung Galaxy S24"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Прошивка и версия Android (OS & Android Version)
+      placeholder: "Например: HyperOS 4.0 / Android 17, One UI 6.1 / Android 14"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги для воспроизведения (Steps to Reproduce)
+      placeholder: "1. Открыть вкладку...\n2. Переключить ползунок...\n3. Происходит..."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактическое поведение (Actual Behavior)
+      placeholder: "Что пошло не так (хрип, отсутствие эффекта, сбой острова и т.д.)"
+    validations:
+      required: true
+  - type: textarea
+    id: system_report
+    attributes:
+      label: Диагностический отчёт (System Diagnostic Report)
+      description: "Откройте вкладку «Система» в приложении, нажмите кнопку «Скопировать отчёт» и вставьте текст сюда:"
+      placeholder: "Вставьте скопированный отчёт вкладки Система..."
+    validations:
+      required: false

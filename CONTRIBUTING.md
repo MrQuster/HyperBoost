@@ -1,20 +1,25 @@
-```markdown
 # Contributing to HyperBoost
 
-Bug reports, device compatibility reports, and translations are welcome.
+Thank you for contributing to HyperBoost!
 
-## Reporting device compatibility or bugs
-1. Open the **System** tab in the app.
-2. Run **Verify Audio Effects** and **Island Self-Test**.
-3. Tap **Copy Report** and paste the output into a new GitHub Issue. The report contains only hardware/OS flags and no personal identifiers.
+## How to Contribute
 
-## Adding or fixing translations
-- Default English strings are in `app/src/main/res/values/strings.xml`.
-- Russian strings are in `app/src/main/res/values-ru/strings.xml`.
-- Both files must contain the exact same `<string name="...">` keys. Run `./gradlew test` before submitting a PR — `DspAndLocalizationTest` automatically checks that no keys are missing.
+1. **Reporting Bugs:**
+   - Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.yml).
+   - Please include device model, Android / OS version, and the diagnostic report from the **System** tab (**Copy Report** button).
 
-## Commit message style
-Use short, imperative commit messages describing one change per commit:
-- `fix: route bass boost through DynamicsProcessing when hardware effect is unsupported`
-- `feat: add backdrop blur to bottom navigation bar using Haze`
-- `docs: update compatibility table in README`
+2. **Localization (i18n):**
+   - Strings are kept in `app/src/main/res/values/strings.xml` (English) and `app/src/main/res/values-ru/strings.xml` (Russian).
+   - Ensure 100% key parity between English and other languages before submitting PRs.
+
+3. **Code Guidelines:**
+   - Stack: Kotlin 2.x, Jetpack Compose, MVVM, StateFlow, DataStore.
+   - Design Tokens: Use `LocalGlassTokens.current` instead of hardcoded dimension or color magic numbers.
+   - Audio Loop: Zero allocations in sample processing loops. No GC pressure or blocking calls.
+   - Android IPC: All `PendingIntent` must use `FLAG_IMMUTABLE`.
+
+4. **Testing before PR:**
+   ```bash
+   ./gradlew test lintDebug assembleDebug
+   ```
+   All unit tests and lint checks must pass.

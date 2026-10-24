@@ -18,12 +18,12 @@ if (keystorePropertiesFile.exists()) {
 
 val rawTagVersion = (project.findProperty("versionName") as? String)
     ?: System.getenv("GITHUB_REF_NAME")?.removePrefix("v")
-    ?: "1.3.1"
+    ?: "1.4.0"
 
 val cleanVersionName = if (rawTagVersion.matches(Regex("""^\d+\.\d+\.\d+.*"""))) {
     rawTagVersion
 } else {
-    "1.3.1"
+    "1.4.0"
 }
 
 fun computeDeterministicVersionCode(ver: String): Int {
