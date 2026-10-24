@@ -141,9 +141,9 @@ fun GlassLensTabBar(
         else -> Color(0xFFF1F5F9).copy(alpha = if (supportsHardwareBackdropBlur) (translucentAlpha + 0.18f) else 0.88f)
     }
 
-    val backdropModifier = if (supportsHardwareBackdropBlur && hazeState != null) {
+    val backdropModifier = if (supportsHardwareBackdropBlur) {
         Modifier.hazeChild(
-            state = hazeState,
+            state = hazeState!!,
             style = HazeDefaults.style(
                 backgroundColor = tokens.baseBackground,
                 tint = HazeTint(color = glassTintColor),
@@ -253,7 +253,7 @@ fun GlassLensTabBar(
                                     val totalMove = (lastPosition - startPos).getDistance()
                                     val elapsed = change.uptimeMillis - downTime
 
-                                    if (!dragActivated && (totalMove > touchSlop || elapsed >= longPressTimeout)) {
+                                    if (freeLensDragEnabled && !dragActivated && (totalMove > touchSlop || elapsed >= longPressTimeout)) {
                                         dragActivated = true
                                         isDraggingLens = true
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)

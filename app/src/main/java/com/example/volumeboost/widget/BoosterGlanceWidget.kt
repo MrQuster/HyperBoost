@@ -20,6 +20,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import com.example.volumeboost.R
 import com.example.volumeboost.service.AudioBoosterService
 
 class BoosterGlanceWidget : GlanceAppWidget() {
@@ -32,7 +33,11 @@ class BoosterGlanceWidget : GlanceAppWidget() {
 
     @Composable
     private fun WidgetGlassContent() {
+        val context = LocalContext.current
         val state = AudioBoosterService.runtimeState.value
+        val offStatus = context.getString(R.string.widget_status_off_fmt, state.currentBoostPercent)
+        val toggleText = if (state.isRunning) context.getString(R.string.widget_btn_off) else context.getString(R.string.widget_btn_on)
+
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
@@ -55,7 +60,7 @@ class BoosterGlanceWidget : GlanceAppWidget() {
                         )
                     )
                     Text(
-                        text = if (state.isRunning) "${state.currentBoostPercent}%" else "Выкл (${state.currentBoostPercent}%)",
+                        text = if (state.isRunning) "${state.currentBoostPercent}%" else offStatus,
                         style = TextStyle(
                             color = ColorProvider(Color.White),
                             fontSize = 16.sp,
@@ -75,7 +80,7 @@ class BoosterGlanceWidget : GlanceAppWidget() {
                 )
                 Spacer(modifier = GlanceModifier.width(6.dp))
                 Button(
-                    text = if (state.isRunning) "Выкл" else "Вкл",
+                    text = toggleText,
                     onClick = actionRunCallback<ToggleBoostWidgetAction>()
                 )
             }

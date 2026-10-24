@@ -6,6 +6,7 @@ import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import com.example.volumeboost.data.BoostMode
+import com.example.volumeboost.data.LimiterMode
 import kotlin.math.*
 
 enum class DspEffectRoute(val labelEn: String, val labelRu: String) {
@@ -40,6 +41,11 @@ class SoftwarePcmDspProcessor(private val sampleRateHz: Int = 48000) {
     // Состояния линий задержки фильтра для Левого и Правого каналов
     private var lx1 = 0.0; private var lx2 = 0.0; private var ly1 = 0.0; private var ly2 = 0.0
     private var rx1 = 0.0; private var rx2 = 0.0; private var ry1 = 0.0; private var ry2 = 0.0
+
+    var lastOutLeft: Double = 0.0
+        private set
+    var lastOutRight: Double = 0.0
+        private set
 
     companion object {
         /**
@@ -96,6 +102,29 @@ class SoftwarePcmDspProcessor(private val sampleRateHz: Int = 48000) {
                 hwVirtSupported -> DspEffectRoute.HARDWARE_EFFECT
                 dynamicsAvailable -> DspEffectRoute.DYNAMICS_PROCESSING_STAGE
                 else -> DspEffectRoute.UNAVAILABLE
+            }
+        }
+
+        /**
+         * Непрерывный C1-гладкий soft-knee лимитер без скачков амплитуды и клиппинг-щелчков.
+         */
+        fun applySampleLimiterDouble(sample: Double, mode: LimiterMode, threshold: Double): Double {
+            return when (mode) {
+                LimiterMode.OFF -> sample
+                LimiterMode.HARD -> sample.coerceIn(-threshold, threshold)
+                LimiterMode.SOFT -> {
+                    val knee = threshold * 0.75
+                    val absSample = abs(sample)
+                    if (absSample <= knee) {
+                        sample
+                    } else {
+                        val sign = if (sample >= 0.0) 1.0 else -1.0
+                        val margin = (threshold - knee).coerceAtLeast(1.0)
+                        val excess = absSample - knee
+                        val compressed = knee + margin * tanh(excess / margin)
+                        sign * compressed.coerceIn(0.0, threshold)
+                    }
+                }
             }
         }
 
@@ -243,14 +272,14 @@ class SoftwarePcmDspProcessor(private val sampleRateHz: Int = 48000) {
     }
 
     /**
-     * Обрабатывает стереопару сэмплов: применяет Biquad Low-Shelf фильтр баса и Mid/Side расширение стереобазы
+     * Обрабатывает стереопару сэмплов напрямую без аллокаций Pair (сохраняет результат в lastOutLeft, lastOutRight).
      */
-    fun processStereoSamplePair(
+    fun processStereoSampleDirect(
         leftIn: Double,
         rightIn: Double,
         bassStrength0to1000: Int,
         virtualizerStrength0to1000: Int
-    ): Pair<Double, Double> {
+    ) {
         var left = leftIn
         var right = rightIn
 
@@ -273,6 +302,20 @@ class SoftwarePcmDspProcessor(private val sampleRateHz: Int = 48000) {
             right = mid - side
         }
 
-        return left to right
+        lastOutLeft = left
+        lastOutRight = right
+    }
+
+    /**
+     * Обрабатывает стереопару сэмплов с возвратом Pair (для юнит-тестов и обратной совместимости).
+     */
+    fun processStereoSamplePair(
+        leftIn: Double,
+        rightIn: Double,
+        bassStrength0to1000: Int,
+        virtualizerStrength0to1000: Int
+    ): Pair<Double, Double> {
+        processStereoSampleDirect(leftIn, rightIn, bassStrength0to1000, virtualizerStrength0to1000)
+        return lastOutLeft to lastOutRight
     }
 }

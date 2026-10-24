@@ -199,12 +199,26 @@ class AudioBoosterService : Service() {
         }
     }
 
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            if (_runtimeState.value.isRunning) {
+                islandUpdateChannel.trySend(targetBoostPercent)
+            }
+        }
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            if (_runtimeState.value.isRunning) {
+                islandUpdateChannel.trySend(targetBoostPercent)
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         repo = SettingsRepository(applicationContext)
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         islandCoordinator = IslandFallbackCoordinator(applicationContext)
+        audioManager.registerAudioDeviceCallback(audioDeviceCallback, mainHandler)
         createNotificationChannel()
 
         serviceScope.launch {
@@ -636,16 +650,16 @@ class AudioBoosterService : Service() {
                             var left = pcmBuffer[i].toDouble() * smoothedGain * leftBal
                             var right = pcmBuffer[i + 1].toDouble() * smoothedGain * rightBal
 
-                            // Программный 64-битный Biquad Low-Shelf фильтр баса + Mid/Side стереосцена
+                            // Программный 64-битный Biquad Low-Shelf фильтр баса + Mid/Side стереосцена без аллокаций
                             if (bassStrength > 0 || virtStrength > 0) {
-                                val (dspL, dspR) = softwareDsp.processStereoSamplePair(
+                                softwareDsp.processStereoSampleDirect(
                                     leftIn = left,
                                     rightIn = right,
                                     bassStrength0to1000 = bassStrength,
                                     virtualizerStrength0to1000 = virtStrength
                                 )
-                                left = dspL
-                                right = dspR
+                                left = softwareDsp.lastOutLeft
+                                right = softwareDsp.lastOutRight
                             }
 
                             if (isMono) {
@@ -658,8 +672,8 @@ class AudioBoosterService : Service() {
                                 if (abs(left) > thresholdLinear || abs(right) > thresholdLinear) {
                                     limiterTriggered = true
                                 }
-                                left = applySampleLimiterDouble(left, limMode, thresholdLinear)
-                                right = applySampleLimiterDouble(right, limMode, thresholdLinear)
+                                left = SoftwarePcmDspProcessor.applySampleLimiterDouble(left, limMode, thresholdLinear)
+                                right = SoftwarePcmDspProcessor.applySampleLimiterDouble(right, limMode, thresholdLinear)
                             }
 
                             if (!left.isFinite()) left = 0.0
@@ -820,21 +834,8 @@ class AudioBoosterService : Service() {
         }
     }
 
-    private fun applySampleLimiterDouble(sample: Double, mode: LimiterMode, threshold: Double): Double {
-        return when (mode) {
-            LimiterMode.OFF -> sample
-            LimiterMode.HARD -> sample.coerceIn(-threshold, threshold)
-            LimiterMode.SOFT -> {
-                val knee = threshold * 0.75
-                if (abs(sample) <= knee) {
-                    sample
-                } else {
-                    val norm = sample / 32768.0
-                    tanh(norm) * 32767.0
-                }
-            }
-        }
-    }
+    private fun applySampleLimiterDouble(sample: Double, mode: LimiterMode, threshold: Double): Double =
+        SoftwarePcmDspProcessor.applySampleLimiterDouble(sample, mode, threshold)
 
     @Suppress("DEPRECATION")
     private fun bindAudioEffectsToSession(
@@ -1260,11 +1261,15 @@ class AudioBoosterService : Service() {
     }
 
     private fun requestTransientAudioFocusMonitor() {
+        if (audioFocusRequest != null) return
         val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setOnAudioFocusChangeListener(audioFocusChangeListener, mainHandler)
             .setWillPauseWhenDucked(false)
             .build()
         audioFocusRequest = req
+        runCatching {
+            audioManager.requestAudioFocus(req)
+        }
     }
 
     private fun calculateGainMillibels(boostPercent: Int): Int {
@@ -1527,6 +1532,7 @@ class AudioBoosterService : Service() {
     override fun onDestroy() {
         testIslandJob?.cancel()
         isRunningSelfTestPreview = false
+        runCatching { audioManager.unregisterAudioDeviceCallback(audioDeviceCallback) }
         stopAllEngines()
         stopForegroundAndCancelIsland("SERVICE_DESTROY")
         serviceScope.cancel()

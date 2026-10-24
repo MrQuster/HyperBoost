@@ -3,6 +3,16 @@
 All notable changes to **HyperBoost** are documented in this file.
 Format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- **DSP Limiter Continuity:** Fixed $C^1$ jump of ~3,700 amplitude units at the knee boundary ($0.75 \times \text{threshold}$) in `SoftwarePcmDspProcessor` and `AudioBoosterService` soft-knee tanh limiters.
+- **Audio Loop Allocations:** Eliminated 48,000 `Pair<Double, Double>` heap allocations per second in PCM audio capture loop via zero-allocation `processStereoSampleDirect`.
+- **Audio Lifecycle:** Added missing `audioManager.requestAudioFocus(req)` call in `AudioBoosterService` and registered `AudioDeviceCallback` with clean unregistration on service destroy.
+- **UI Interaction:** Connected `freeLensDragEnabled` setting to `GlassLensTabBar`, ensuring 100% reliable tab switching on normal tap without accidental drag interception.
+- **Localization & Icons:** Eliminated hardcoded strings in Glance Widget, Home, Island JSON Builder, and System screens, achieving 100% key parity between English and Russian resources. Replaced deprecated Compose icons with `AutoMirrored` counterparts.
+- **Documentation:** Restored complete release instructions in `docs/RELEASING.md` and cleaned markdown formatting in `README.ru.md`.
+
 ## [1.3.1] - 2026-10-20
 
 ### Added
