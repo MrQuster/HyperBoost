@@ -2,6 +2,9 @@
     <string name="app_name">HyperBoost</string>
     <string name="subtitle_engine">Liquid Glass Audio Engine</string>
     <string name="tile_label">Volume Boost</string>
+    <string name="tile_active_fmt">Boost %1$d%%</string>
+    <string name="tile_sub_active">+10% / −10%</string>
+    <string name="tile_sub_inactive">Off</string>
     <string name="widget_name">HyperBoost Widget</string>
 
     <!-- Navigation -->
@@ -53,6 +56,7 @@
     <string name="drm_warning">Current app blocks audio capture (DRM) or playback is paused.</string>
     <string name="sleep_timer_title">Auto-Off Sleep Timer</string>
     <string name="sleep_timer_off">Off</string>
+    <string name="sleep_timer_remaining_fmt">%1$d m %2$d s</string>
     <string name="timer_15m">15m</string>
     <string name="timer_30m">30m</string>
     <string name="timer_60m">60m</string>

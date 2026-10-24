@@ -2,6 +2,9 @@
     <string name="app_name">HyperBoost</string>
     <string name="subtitle_engine">Аудиодвижок Liquid Glass</string>
     <string name="tile_label">Усилитель</string>
+    <string name="tile_active_fmt">Буст %1$d%%</string>
+    <string name="tile_sub_active">+10% / −10%</string>
+    <string name="tile_sub_inactive">Выкл</string>
     <string name="widget_name">HyperBoost Виджет</string>
 
     <!-- Навигация -->
@@ -53,6 +56,7 @@
     <string name="drm_warning">Текущее приложение запрещает захват звука (DRM) или стоит на паузе.</string>
     <string name="sleep_timer_title">Таймер автоотключения</string>
     <string name="sleep_timer_off">Выкл</string>
+    <string name="sleep_timer_remaining_fmt">%1$d мин %2$d с</string>
     <string name="timer_15m">15м</string>
     <string name="timer_30m">30м</string>
     <string name="timer_60m">60м</string>
