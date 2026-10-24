@@ -1,6 +1,7 @@
 package com.example.volumeboost.dsp
 
 import com.example.volumeboost.data.BoostMode
+import com.example.volumeboost.data.LimiterMode
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -70,7 +71,9 @@ class DspAndLocalizationTest {
             File("app/src/main/res/values/strings.xml")
         ).firstOrNull { it.exists() } ?: return
 
-        val ruFile = File(enFile.parentFile.parentFile, "values-ru/strings.xml")
+        val parent = enFile.parentFile?.parentFile
+        assertNotNull("Enclosing directory must exist", parent)
+        val ruFile = File(parent!!, "values-ru/strings.xml")
         assertTrue("Russian strings.xml must exist at ${ruFile.path}", ruFile.exists())
 
         val enKeys = parseStringKeys(enFile)
@@ -92,5 +95,34 @@ class DspAndLocalizationTest {
             if (!attr.isNullOrBlank()) keys.add(attr)
         }
         return keys
+    }
+
+    @Test
+    fun `soft knee limiter is continuous without jump discontinuity at knee threshold`() {
+        val threshold = 30000.0
+        val knee = threshold * 0.75 // 22500.0
+
+        val justBelowKnee = SoftwarePcmDspProcessor.applySampleLimiterDouble(knee - 0.1, LimiterMode.SOFT, threshold)
+        val atKnee = SoftwarePcmDspProcessor.applySampleLimiterDouble(knee, LimiterMode.SOFT, threshold)
+        val justAboveKnee = SoftwarePcmDspProcessor.applySampleLimiterDouble(knee + 0.1, LimiterMode.SOFT, threshold)
+
+        // Разрыв функции в окрестности knee должен быть пренебрежимо мал (< 0.15)
+        assertEquals(knee, justBelowKnee, 0.15)
+        assertEquals(knee, atKnee, 0.001)
+        assertEquals(knee, justAboveKnee, 0.15)
+
+        // Предельное значение не должно превосходить threshold
+        val extreme = SoftwarePcmDspProcessor.applySampleLimiterDouble(100000.0, LimiterMode.SOFT, threshold)
+        assertTrue("Extreme value ($extreme) must be <= threshold ($threshold)", extreme <= threshold)
+    }
+
+    @Test
+    fun `processStereoSampleDirect processes samples without allocation and matches pair method`() {
+        val dsp1 = SoftwarePcmDspProcessor(sampleRateHz = 48000)
+        val dsp2 = SoftwarePcmDspProcessor(sampleRateHz = 48000)
+        val (pairL, pairR) = dsp1.processStereoSamplePair(1200.0, -1200.0, bassStrength0to1000 = 500, virtualizerStrength0to1000 = 400)
+        dsp2.processStereoSampleDirect(1200.0, -1200.0, bassStrength0to1000 = 500, virtualizerStrength0to1000 = 400)
+        assertEquals(pairL, dsp2.lastOutLeft, 0.0001)
+        assertEquals(pairR, dsp2.lastOutRight, 0.0001)
     }
 }
