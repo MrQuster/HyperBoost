@@ -1,22 +1,25 @@
 <div align="center">
-  <img src="docs/icon-512.png" width="112" height="112" alt="HyperBoost icon" />
-  <h1>HyperBoost</h1>
-  <p>Volume booster and equalizer for Android with Xiaomi Hyper Island and Liquid Glass UI</p>
-  <p>
-    <a href="https://github.com/MrQuster/HyperBoost/releases/latest"><img src="https://img.shields.io/github/v/release/MrQuster/HyperBoost?color=00F5D4&amp;logo=github" alt="Latest Release" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-00A8E8.svg" alt="License: MIT" /></a>
-    <a href="https://github.com/MrQuster/HyperBoost/actions/workflows/ci.yml"><img src="https://github.com/MrQuster/HyperBoost/actions/workflows/ci.yml/badge.svg" alt="Android CI" /></a>
-    <a href="app/build.gradle.kts"><img src="https://img.shields.io/badge/Android-10%2B%20(API%2029%2B)-00F5D4" alt="Android 10+" /></a>
-  </p>
-  <p>
-    <b>English</b> •
-    <a href="README.ru.md">Русский</a> •
-    <a href="https://github.com/MrQuster/HyperBoost/releases/latest">Download APK</a> •
-    <a href="https://github.com/MrQuster/HyperBoost/issues">Report Issue</a>
-  </p>
-</div>
 
----
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/m3/hero-en-dark.svg">
+  <img src="docs/m3/hero-en-light.svg" width="100%" alt="HyperBoost — Volume booster and equalizer for Android">
+</picture>
+
+<br/>
+
+[![Release](https://img.shields.io/github/v/release/MrQuster/HyperBoost?style=for-the-badge&color=425E91&labelColor=1E2025)](https://github.com/MrQuster/HyperBoost/releases/latest)
+[![License](https://img.shields.io/badge/License-MIT-3E4759?style=for-the-badge&labelColor=1E2025)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/MrQuster/HyperBoost/ci.yml?style=for-the-badge&color=3E4759&labelColor=1E2025&label=CI)](https://github.com/MrQuster/HyperBoost/actions/workflows/ci.yml)
+[![Android](https://img.shields.io/badge/Android-10%2B%20(API%2029%2B)-3E4759?style=for-the-badge&labelColor=1E2025)](app/build.gradle.kts)
+
+**English** · [Русский](README.ru.md) · [Download APK](https://github.com/MrQuster/HyperBoost/releases/latest) · [Report Issue](https://github.com/MrQuster/HyperBoost/issues)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/m3/wave-dark.svg">
+  <img src="docs/m3/wave-light.svg" width="100%" alt="">
+</picture>
+
+</div>
 
 HyperBoost is an open-source Android utility (Android 10+, API 29+) that increases audio volume above the standard 100% cap on phone speakers, Bluetooth headphones, external speakers, and USB DACs. It features a translucent Liquid Glass interface, 5 distinct screens, and integration with Xiaomi Super Island (`miui.focus.param`) and Android 16+ Live Updates.
 
